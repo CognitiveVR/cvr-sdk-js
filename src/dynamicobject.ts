@@ -217,7 +217,7 @@ class DynamicObject {
         return newObjectId.id;
     }
 
-    trackObject(id: string, object: object, options: { positionThreshold?: number, rotationThreshold?: number, scaleThreshold?: number } = {}): void { 
+    trackObject(id: string, object: object, options: { positionThreshold?: number, rotationThreshold?: number, scaleThreshold?: number, useLocalScale?: boolean } = {}): void { 
         if (!id || !object) {
             console.error("DynamicObject.trackObject: id and object must be provided.");
             return;

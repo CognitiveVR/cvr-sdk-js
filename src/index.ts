@@ -28,6 +28,7 @@ import {
   XRSessionManager,
   getHMDInfo,
   getEnabledFeatures,
+  hasTrackedControllers,
   XRSessionManager as XRSessionManagerType,
   GazeHitData
 } from './utils/webxr';
@@ -37,9 +38,9 @@ interface C3DConstructorSettings {
 }
 
 class C3D {
+  private static readonly DEVICE_ID_WAIT_TIMEOUT_MS = 3000;
   public core: CognitiveVRAnalyticsCore;
   public xrSessionManager: XRSessionManagerType | null;
-  public gazeRaycaster: (() => GazeHitData | null) | null;
   public lastInputType: 'none' | 'hand' | 'controller';
   public network: Network;
   public gaze: GazeTracker;
@@ -56,6 +57,7 @@ class C3D {
   public renderer: any;    // Supports multiple engines (Three, Babylon, WLE) without shared interfaces
   public boundaryTracker: BoundaryTracker;
   private deviceIdPromise: Promise<void> | null = null;
+  private _gazeRaycaster: (() => GazeHitData | null) | null;
 
   constructor(settings?: C3DConstructorSettings, renderer: any = null) { 
     this.core = coreInstance;
@@ -65,7 +67,7 @@ class C3D {
     }
 
     this.xrSessionManager = null; 
-    this.gazeRaycaster = null;
+    this._gazeRaycaster = null;
 
     this.setUserProperty("c3d.version", this.core.config.SDKVersion);  
     this.lastInputType = 'none';
@@ -126,6 +128,17 @@ class C3D {
     }
   }
 
+  get gazeRaycaster(): (() => GazeHitData | null) | null {
+    return this._gazeRaycaster;
+  }
+
+  set gazeRaycaster(value: (() => GazeHitData | null) | null) {
+    this._gazeRaycaster = value;
+    if (this.xrSessionManager) {
+      this.xrSessionManager.setGazeRaycaster(value);
+    }
+  }
+
   private async initializeDeviceId(): Promise<void> {
     try {
         const fp = await FingerprintJS.load();
@@ -139,11 +152,35 @@ class C3D {
     }
   }
 
-  async startSession(xrSession: XRSession | null = null): Promise<boolean> { 
+  private async waitForDeviceId(): Promise<void> {
+    if (!this.deviceIdPromise) {
+      return;
+    }
+
+    let didTimeout = false;
+
+    await Promise.race([
+      this.deviceIdPromise,
+      new Promise<void>((resolve) => {
+        setTimeout(() => {
+          didTimeout = true;
+          resolve();
+        }, C3D.DEVICE_ID_WAIT_TIMEOUT_MS);
+      }),
+    ]);
+
+    if (didTimeout) {
+      console.warn(
+        `C3D: Device fingerprint initialization exceeded ${C3D.DEVICE_ID_WAIT_TIMEOUT_MS}ms. Continuing session startup without waiting for it.`,
+      );
+    }
+  }
+
+  async startSession(xrSession: XRSession | null = null): Promise<boolean> {
     if (this.core.isSessionActive) { return false; }
 
     if (this.deviceIdPromise) {
-        await this.deviceIdPromise;
+      await this.waitForDeviceId();
     }
   
     if (this.renderer) { 
@@ -177,6 +214,17 @@ class C3D {
       }
 
       const referenceSpace = sessionInfo ? sessionInfo.referenceSpace : null;
+      const sessionMode = sessionInfo ? sessionInfo.sessionMode : null;
+      const referenceSpaceType = sessionInfo ? sessionInfo.referenceSpaceType : null;
+
+      if (sessionMode) {
+        this.setSessionProperty('c3d.session.xr.mode', sessionMode);
+      }
+      if (referenceSpaceType) {
+        this.setSessionProperty('c3d.session.xr.reference_space', referenceSpaceType);
+      }
+      this.setSessionProperty('c3d.session.xr.boundary_available', Boolean(sessionInfo && sessionInfo.boundedReferenceSpace));
+      this.setSessionProperty('c3d.device.controllerinputs.enabled', hasTrackedControllers(xrSession.inputSources));
 
       if (referenceSpace) {
         this.hmdOrientation.start(
@@ -194,7 +242,6 @@ class C3D {
       const features = getEnabledFeatures(xrSession);
       this.setDeviceProperty("HandTracking", features.handTracking);
       this.setDeviceProperty("EyeTracking", features.eyeTracking);
-      this.setSessionProperty("c3d.device.controllerinputs.enabled", true);
       if (features.handTracking) {
           this.setSessionProperty("c3d.app.handtracking.enabled", true);
       }
@@ -214,6 +261,7 @@ class C3D {
             // @ts-ignore
             const xrEvent = event as XRInputSourcesChangeEvent;
             const newHmdInfo = getHMDInfo(xrEvent.session.inputSources);
+            this.setSessionProperty('c3d.device.controllerinputs.enabled', hasTrackedControllers(xrEvent.session.inputSources));
             if (newHmdInfo) {
                 this.setDeviceProperty('VRModel', newHmdInfo.VRModel);
                 this.setDeviceProperty('VRVendor', newHmdInfo.VRVendor);
@@ -283,6 +331,22 @@ class C3D {
 
   getCurrentInputType(): 'hand' | 'controller' | 'none' {
       return this.lastInputType;
+  }
+
+  getXRSessionMode(): string | null {
+      return this.xrSessionManager ? this.xrSessionManager.sessionMode : null;
+  }
+
+  getXRReferenceSpaceType(): string | null {
+      return this.xrSessionManager ? this.xrSessionManager.referenceSpaceType : null;
+  }
+
+  isARSession(): boolean {
+      return this.getXRSessionMode() === 'immersive-ar';
+  }
+
+  isVRSession(): boolean {
+      return this.getXRSessionMode() === 'immersive-vr';
   }
 
   sceneData(name: string, id: string, version: string): SceneConfig {
