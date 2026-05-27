@@ -176,10 +176,12 @@ class C3D {
     }
   }
 
-  async startSession(xrSession: XRSession | null = null): Promise<boolean> { 
+  async startSession(xrSession: XRSession | null = null): Promise<boolean> {
     if (this.core.isSessionActive) { return false; }
 
-    await this.waitForDeviceId();
+    if (this.deviceIdPromise) {
+      await this.waitForDeviceId();
+    }
   
     if (this.renderer) { 
       this.profiler.start(this.renderer);
