@@ -17,12 +17,14 @@ const settings = {
 const scene1 = settings.config.allSceneData[0].sceneName;
 
 function createXRSessionMock({ mode, supportedSpaces, inputSources = [] }) {
+    const spaceMap = new Map(Object.entries(supportedSpaces));
     return {
         mode,
         inputSources,
         requestReferenceSpace: jest.fn((type) => {
-            if (supportedSpaces[type]) {
-                return Promise.resolve(supportedSpaces[type]);
+            const space = spaceMap.get(type);
+            if (space) {
+                return Promise.resolve(space);
             }
             return Promise.reject(new Error(`Unsupported reference space: ${type}`));
         }),
