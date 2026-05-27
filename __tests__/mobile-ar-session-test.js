@@ -16,15 +16,19 @@ const settings = {
 
 const scene1 = settings.config.allSceneData[0].sceneName;
 
-function createXRSessionMock({ mode, supportedSpaces, inputSources = [] }) {
-    const spaceMap = new Map(Object.entries(supportedSpaces));
+function createXRSessionMock({ mode, localSpace, localFloorSpace, boundedFloorSpace, inputSources = [] }) {
     return {
         mode,
         inputSources,
         requestReferenceSpace: jest.fn((type) => {
-            const space = spaceMap.get(type);
-            if (space) {
-                return Promise.resolve(space);
+            if (type === 'local' && localSpace) {
+                return Promise.resolve(localSpace);
+            }
+            if (type === 'local-floor' && localFloorSpace) {
+                return Promise.resolve(localFloorSpace);
+            }
+            if (type === 'bounded-floor' && boundedFloorSpace) {
+                return Promise.resolve(boundedFloorSpace);
             }
             return Promise.reject(new Error(`Unsupported reference space: ${type}`));
         }),
@@ -51,9 +55,7 @@ beforeEach(async () => {
 test('Prefer local reference space for immersive-ar sessions and disable VR-only flags', async () => {
     const xrSession = createXRSessionMock({
         mode: 'immersive-ar',
-        supportedSpaces: {
-            local: { kind: 'local' },
-        },
+        localSpace: { kind: 'local' },
     });
 
     await expect(c3d.startSession(xrSession)).resolves.toBe(true);
@@ -74,10 +76,8 @@ test('Prefer local reference space for immersive-ar sessions and disable VR-only
 test('Keep local-floor and tracked controller behavior for immersive-vr sessions', async () => {
     const xrSession = createXRSessionMock({
         mode: 'immersive-vr',
-        supportedSpaces: {
-            'local-floor': { kind: 'local-floor' },
-            'bounded-floor': { kind: 'bounded-floor', boundsGeometry: [] },
-        },
+        localFloorSpace: { kind: 'local-floor' },
+        boundedFloorSpace: { kind: 'bounded-floor', boundsGeometry: [] },
         inputSources: [
             {
                 handedness: 'right',
@@ -107,9 +107,7 @@ test('Keep local-floor and tracked controller behavior for immersive-vr sessions
 test('Allow gaze raycasting to be attached after session start for mobile AR integrations', async () => {
     const xrSession = createXRSessionMock({
         mode: 'immersive-ar',
-        supportedSpaces: {
-            local: { kind: 'local' },
-        },
+        localSpace: { kind: 'local' },
     });
 
     await expect(c3d.startSession(xrSession)).resolves.toBe(true);
