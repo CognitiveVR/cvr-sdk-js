@@ -74,6 +74,8 @@ c3d-sdk-webxr/
 
 The SDK is flexible and integrates seamlessly with various frameworks/ web engines such as **ThreeJS, Wonderland Engine, PlayCanvas, and more**.
 
+It supports both **immersive VR** and **immersive AR** WebXR sessions, including mobile AR flows built on Three.js and Mattercraft. For immersive AR sessions, the SDK automatically prefers a `local` reference space and falls back to `local-floor` when needed, while boundary tracking stays disabled unless the platform exposes a bounded reference space.
+
 It supports a wide range of development environments by providing multiple module formats in the /lib folder:
 
 * **UMD**: Universal format for direct use in browsers via a <script> tag.

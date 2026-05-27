@@ -11,6 +11,8 @@ export interface GazeHitData {
     point: number[];
 }
 
+type XRSessionModeValue = 'immersive-ar' | 'immersive-vr' | 'inline' | string;
+
 // Dependencies interfaces
 interface GazeTracker {
     recordGaze: (_position: number[], orientation: number[], gazeHitData: GazeHitData | number[] | null) => void;
@@ -24,7 +26,13 @@ export type GazeRaycaster = () => GazeHitData | null;
 
 interface SessionStartResult {
     referenceSpace: XRReferenceSpace | null;
+    referenceSpaceType: string | null;
     boundedReferenceSpace: XRReferenceSpace | null;
+    sessionMode: XRSessionModeValue | null;
+}
+
+interface ReferenceSpaceResult {
+    referenceSpace: XRReferenceSpace | null;
     type: string | null;
 }
 
@@ -38,6 +46,7 @@ export class XRSessionManager {
   public referenceSpace: XRReferenceSpace | null;  // For gaze tracking (local-floor)
   public boundedReferenceSpace: XRReferenceSpace | null; // For boundary tracking (bounded-floor)
   public referenceSpaceType: string | null;
+  public sessionMode: XRSessionModeValue | null;
   
   private isTracking: boolean;
   private animationFrameHandle: number | null;
@@ -52,6 +61,7 @@ export class XRSessionManager {
     this.referenceSpace = null;  // For gaze tracking (local-floor)
     this.boundedReferenceSpace = null; // For boundary tracking (bounded-floor)
     this.referenceSpaceType = null;
+    this.sessionMode = null;
     this.isTracking = false; 
     this.animationFrameHandle = null;
     this.onXRFrame = this.onXRFrame.bind(this);
@@ -59,38 +69,46 @@ export class XRSessionManager {
     this.interval = 100; 
   }
 
+  setGazeRaycaster(gazeRaycaster: GazeRaycaster | null): void {
+      this.gazeRaycaster = gazeRaycaster;
+  }
+
   async start(): Promise<SessionStartResult | null> {
       if (this.isTracking) return { 
           referenceSpace: this.referenceSpace, 
+          referenceSpaceType: this.referenceSpaceType,
           boundedReferenceSpace: this.boundedReferenceSpace,
-          type: this.referenceSpaceType 
+          sessionMode: this.sessionMode
       };
-      
-      // 1. ALWAYS get local-floor for gaze tracking
-      try {
-          this.referenceSpace = await this.xrSession.requestReferenceSpace('local-floor');
-          console.log('Cog3D-XR-Session-Manager: Using "local-floor" for gaze tracking.');
-      } catch (error) {
-          console.warn('Cog3D-XR-Session-Manager: "local-floor" not supported, falling back to "local".', error);
-          try {
-              this.referenceSpace = await this.xrSession.requestReferenceSpace('local');
-              console.log('Cog3D-XR-Session-Manager: Using "local" for gaze tracking.');
-          } catch (finalError) {
-              console.error('Cog3D-XR-Session-Manager: Failed to get reference space for gaze.', finalError);
-              return null;
-          }
+
+      this.sessionMode = getSessionMode(this.xrSession);
+
+      const preferredReferenceSpaces = this.sessionMode === 'immersive-ar'
+          ? ['local', 'local-floor']
+          : ['local-floor', 'local'];
+
+      const referenceSpaceResult = await this._requestFirstSupportedReferenceSpace(preferredReferenceSpaces);
+      if (!referenceSpaceResult.referenceSpace) {
+          console.error('Cog3D-XR-Session-Manager: Failed to get reference space for gaze.');
+          return null;
       }
-      
+
+      this.referenceSpace = referenceSpaceResult.referenceSpace;
+      this.referenceSpaceType = referenceSpaceResult.type;
+      console.log(`Cog3D-XR-Session-Manager: Using "${this.referenceSpaceType}" for ${this.sessionMode || 'xr'} gaze tracking.`);
+
       // 2. Try to get bounded-floor for boundary tracking (optional)
-      try {
-          // @ts-ignore: 'bounded-floor' might not be in standard definitions depending on tsconfig lib
-          this.boundedReferenceSpace = await this.xrSession.requestReferenceSpace('bounded-floor');
-          this.referenceSpaceType = 'bounded-floor';
-          console.log('Cog3D-XR-Session-Manager: "bounded-floor" available for boundary tracking.');
-      } catch (error) {
-          console.warn('Cog3D-XR-Session-Manager: "bounded-floor" not available. Boundary tracking disabled.', error);
+      if (this.sessionMode !== 'immersive-ar') {
+          try {
+              this.boundedReferenceSpace = await this.xrSession.requestReferenceSpace('bounded-floor');
+              console.log('Cog3D-XR-Session-Manager: "bounded-floor" available for boundary tracking.');
+          } catch (error) {
+              console.warn('Cog3D-XR-Session-Manager: "bounded-floor" not available. Boundary tracking disabled.', error);
+              this.boundedReferenceSpace = null;
+          }
+      } else {
           this.boundedReferenceSpace = null;
-          this.referenceSpaceType = 'local-floor';
+          console.log('Cog3D-XR-Session-Manager: Skipping bounded-floor lookup for immersive-ar session.');
       }
       
       this.isTracking = true;
@@ -99,8 +117,28 @@ export class XRSessionManager {
       
       return {
           referenceSpace: this.referenceSpace,  // local-floor for gaze
+          referenceSpaceType: this.referenceSpaceType,
           boundedReferenceSpace: this.boundedReferenceSpace,  // bounded-floor for boundaries
-          type: this.referenceSpaceType
+          sessionMode: this.sessionMode
+      };
+  }
+
+  private async _requestFirstSupportedReferenceSpace(candidates: string[]): Promise<ReferenceSpaceResult> {
+      for (const candidate of candidates) {
+          try {
+              const referenceSpace = await this.xrSession.requestReferenceSpace(candidate as XRReferenceSpaceType);
+              return {
+                  referenceSpace,
+                  type: candidate
+              };
+          } catch (error) {
+              console.warn(`Cog3D-XR-Session-Manager: "${candidate}" not supported. Trying next reference space.`, error);
+          }
+      }
+
+      return {
+          referenceSpace: null,
+          type: null
       };
   }
   
@@ -146,9 +184,27 @@ export class XRSessionManager {
     if (this.animationFrameHandle) {
       this.xrSession.cancelAnimationFrame(this.animationFrameHandle);
     }
+    this.referenceSpace = null;
+    this.referenceSpaceType = null;
+    this.boundedReferenceSpace = null;
+    this.sessionMode = null;
     console.log('Cog3D-XR-Session-Manager: Gaze tracking stopped.');
   }
 }
+
+export const getSessionMode = (xrSession: XRSession): XRSessionModeValue | null => {
+    const sessionWithMode = xrSession as unknown as { mode?: XRSessionModeValue };
+    return sessionWithMode.mode || null;
+};
+
+export const hasTrackedControllers = (inputSources: XRInputSourceArray | XRInputSource[]): boolean => {
+    for (const source of inputSources) {
+        if (!source.hand && source.targetRayMode === 'tracked-pointer' && source.gripSpace) {
+            return true;
+        }
+    }
+    return false;
+};
 
 // Controller (profile identifier) lookup table to infer HMD Device, note that headset can be different from controller brand 
 const HMD_PROFILE_MAP: { [key: string]: { VRModel: string; VRVendor: string } } = {
