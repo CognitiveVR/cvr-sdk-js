@@ -38,6 +38,7 @@ interface C3DConstructorSettings {
 }
 
 class C3D {
+  private static readonly DEVICE_ID_WAIT_TIMEOUT_MS = 3000;
   public core: CognitiveVRAnalyticsCore;
   public xrSessionManager: XRSessionManagerType | null;
   public lastInputType: 'none' | 'hand' | 'controller';
@@ -151,12 +152,34 @@ class C3D {
     }
   }
 
+  private async waitForDeviceId(): Promise<void> {
+    if (!this.deviceIdPromise) {
+      return;
+    }
+
+    let didTimeout = false;
+
+    await Promise.race([
+      this.deviceIdPromise,
+      new Promise<void>((resolve) => {
+        setTimeout(() => {
+          didTimeout = true;
+          resolve();
+        }, C3D.DEVICE_ID_WAIT_TIMEOUT_MS);
+      }),
+    ]);
+
+    if (didTimeout) {
+      console.warn(
+        `C3D: Device fingerprint initialization exceeded ${C3D.DEVICE_ID_WAIT_TIMEOUT_MS}ms. Continuing session startup without waiting for it.`,
+      );
+    }
+  }
+
   async startSession(xrSession: XRSession | null = null): Promise<boolean> { 
     if (this.core.isSessionActive) { return false; }
 
-    if (this.deviceIdPromise) {
-        await this.deviceIdPromise;
-    }
+    await this.waitForDeviceId();
   
     if (this.renderer) { 
       this.profiler.start(this.renderer);
