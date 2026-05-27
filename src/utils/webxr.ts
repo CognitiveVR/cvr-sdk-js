@@ -100,7 +100,6 @@ export class XRSessionManager {
       // 2. Try to get bounded-floor for boundary tracking (optional)
       if (this.sessionMode !== 'immersive-ar') {
           try {
-              // @ts-ignore: 'bounded-floor' might not be in standard definitions depending on tsconfig lib
               this.boundedReferenceSpace = await this.xrSession.requestReferenceSpace('bounded-floor');
               console.log('Cog3D-XR-Session-Manager: "bounded-floor" available for boundary tracking.');
           } catch (error) {
