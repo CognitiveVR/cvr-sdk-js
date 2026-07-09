@@ -66,3 +66,5 @@ package_lock.json
 types/
 
 **/.DS_Store
+docs/audits/webxr-device-signal-audit-delta-2026-07.md
+docs/audits/webxr-device-signal-audit.md
