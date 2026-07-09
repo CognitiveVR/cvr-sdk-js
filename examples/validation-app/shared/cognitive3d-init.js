@@ -148,6 +148,16 @@
     try {
       c3d.setScene(config.scene.sceneName);
       c3d.setUserProperty('c3d.app.version', '1.0'); // docs mark this required
+      // App/engine metadata normally supplied by an engine adapter (e.g. the Three.js
+      // adapter sets AppEngine='Three.js', AppEngineVersion=THREE.REVISION). This app uses
+      // the plain core SDK with NO adapter, so we set them explicitly: the enrichment
+      // pipeline (melder) treats c3d.app.engine as a required core prop and drops sessions
+      // that omit it (InvalidSessionException: "session missing the following core props:
+      // c3d.app.engine"). Without this the session ingests (HTTP 200) but never reaches the
+      // query layer.
+      c3d.setDeviceProperty('AppName', 'C3D WebXR Validation App');
+      c3d.setDeviceProperty('AppEngine', 'WebXR');
+      c3d.setDeviceProperty('AppEngineVersion', (c3d.core && c3d.core.config && c3d.core.config.SDKVersion) || 'unknown');
       await c3d.startSession(xrSession);
     } catch (err) {
       console.error(
