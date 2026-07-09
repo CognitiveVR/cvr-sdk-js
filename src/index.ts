@@ -21,12 +21,18 @@ import {
   getHardwareConcurrency,
   getConnection,
   getGPUInfo,
+  getUserAgent,
+  getUABrands,
+  getUAMobile,
+  getMaxTouchPoints,
+  getPointerCoarse,
+  getHoverHover,
   isBrowser
 } from './utils/environment';
 
-import { 
+import {
   XRSessionManager,
-  getHMDInfo,
+  getInputProfiles,
   getEnabledFeatures,
   hasTrackedControllers,
   XRSessionManager as XRSessionManagerType,
@@ -97,7 +103,10 @@ class C3D {
 
     const deviceMemory = getDeviceMemory();
     if (deviceMemory) {
-      this.setDeviceProperty('DeviceMemory', deviceMemory * 1000); 
+      // MB (legacy convention, no unit in key name; the pipeline normalizes on this). Kept for continuity.
+      this.setDeviceProperty('DeviceMemory', deviceMemory * 1000);
+      // Raw navigator.deviceMemory (GB), unit encoded in the key name.
+      this.setDeviceProperty('DeviceMemoryGB', deviceMemory);
     }
 
     const screenHeight = getScreenHeight();
@@ -125,6 +134,38 @@ class C3D {
     if (gpuInfo) {
       this.setDeviceProperty('DeviceGPU', gpuInfo.renderer);
       this.setDeviceProperty('DeviceGPUVendor', gpuInfo.vendor);
+    }
+
+    // Raw device-identity signals for pipeline-side resolution (SDK does no classification).
+    // Booleans/numbers are gated on `!== null` so meaningful falsy values (false, 0) are still sent.
+    const userAgent = getUserAgent();
+    if (userAgent) {
+      this.setDeviceProperty('UserAgent', userAgent);
+    }
+
+    const uaBrands = getUABrands();
+    if (uaBrands) {
+      this.setDeviceProperty('UABrands', uaBrands);
+    }
+
+    const uaMobile = getUAMobile();
+    if (uaMobile !== null) {
+      this.setDeviceProperty('UAMobile', uaMobile);
+    }
+
+    const maxTouchPoints = getMaxTouchPoints();
+    if (maxTouchPoints !== null) {
+      this.setDeviceProperty('DeviceMaxTouchPoints', maxTouchPoints);
+    }
+
+    const pointerCoarse = getPointerCoarse();
+    if (pointerCoarse !== null) {
+      this.setDeviceProperty('DevicePointerCoarse', pointerCoarse);
+    }
+
+    const hoverHover = getHoverHover();
+    if (hoverHover !== null) {
+      this.setDeviceProperty('DeviceHoverHover', hoverHover);
     }
   }
 
@@ -251,21 +292,14 @@ class C3D {
     }
 
     if (xrSession && xrSession.inputSources) {
-        const hmdInfo = getHMDInfo(xrSession.inputSources);
-        if (hmdInfo) {
-            this.setDeviceProperty('VRModel', hmdInfo.VRModel);
-            this.setDeviceProperty('VRVendor', hmdInfo.VRVendor);
-        }
+        // Raw input profiles replace the removed classified c3d.device.hmd.type / c3d.device.vendor.
+        this.setDeviceProperty('XRInputProfiles', getInputProfiles(xrSession.inputSources));
 
         xrSession.addEventListener('inputsourceschange', (event: XRInputSourcesChangeEvent) => {
             // @ts-ignore
             const xrEvent = event as XRInputSourcesChangeEvent;
-            const newHmdInfo = getHMDInfo(xrEvent.session.inputSources);
             this.setSessionProperty('c3d.device.controllerinputs.enabled', hasTrackedControllers(xrEvent.session.inputSources));
-            if (newHmdInfo) {
-                this.setDeviceProperty('VRModel', newHmdInfo.VRModel);
-                this.setDeviceProperty('VRVendor', newHmdInfo.VRVendor);
-            }
+            this.setDeviceProperty('XRInputProfiles', getInputProfiles(xrEvent.session.inputSources));
         });
     }
 

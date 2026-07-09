@@ -206,33 +206,18 @@ export const hasTrackedControllers = (inputSources: XRInputSourceArray | XRInput
     return false;
 };
 
-// Controller (profile identifier) lookup table to infer HMD Device, note that headset can be different from controller brand 
-const HMD_PROFILE_MAP: { [key: string]: { VRModel: string; VRVendor: string } } = {
-    'meta-quest-touch-pro': { VRModel: 'Quest Pro', VRVendor: 'Meta' },
-    'meta-quest-touch-plus': { VRModel: 'Quest 3/ Quest 3S', VRVendor: 'Meta' },
-    'oculus-touch-v3': { VRModel: 'Quest 2', VRVendor: 'Meta' },
-    'oculus-touch': { VRModel: 'Quest/Rift S', VRVendor: 'Meta' }, // Generic fallback
-    'htc-vive': { VRModel: 'Vive', VRVendor: 'HTC' },
-    'valve-index': { VRModel: 'Index', VRVendor: 'Valve' },
-    'microsoft-mixed-reality': { VRModel: 'Mixed Reality', VRVendor: 'Microsoft' }
-};
-
-export const getHMDInfo = (inputSources: XRInputSourceArray | XRInputSource[]): { VRModel: string; VRVendor: string } | null => {
+// Raw WebXR input profiles (e.g. "meta-quest-touch-plus") flattened and de-duplicated
+// across all input sources. Returned verbatim as the device's hardware fingerprint — the
+// pipeline (not the SDK) resolves HMD/controller identity from these strings.
+export const getInputProfiles = (inputSources: XRInputSourceArray | XRInputSource[]): string[] => {
+    const profiles = new Set<string>();
     for (const source of inputSources) {
         if (!source.profiles) continue;
-
         for (const profile of source.profiles) {
-            const lowerCaseProfile = profile.toLowerCase();
-            
-            const matchedProfile = Object.keys(HMD_PROFILE_MAP).find(key => lowerCaseProfile.includes(key));
-
-            if (matchedProfile) {
-                console.log("HMD Profile Matched: ", lowerCaseProfile);
-                return HMD_PROFILE_MAP[matchedProfile];
-            }
+            profiles.add(profile);
         }
     }
-    return null; 
+    return Array.from(profiles);
 };
 
 export const getEnabledFeatures = (xrSession: XRSession): { handTracking: boolean; eyeTracking: boolean } => {

@@ -19,7 +19,7 @@ export interface ManifestEntry {
     name: string;
     mesh: string;
     fileType: string;
-    controllerType?: string;
+    inputProfiles?: string[];
     properties?: Array<Record<string, any>>;
 }
 
@@ -52,7 +52,7 @@ interface ManifestPayloadEntry {
     name: string;
     mesh: string;
     fileType: string;
-    controllerType?: string;
+    inputProfiles?: string[];
     properties?: Array<Record<string, any>>;
 }
 
@@ -332,7 +332,7 @@ class DynamicObject {
                 mesh: element.mesh,
                 fileType: "gltf"
             };
-            if (element.controllerType) entry.controllerType = element.controllerType;
+            if (element.inputProfiles?.length) entry.inputProfiles = element.inputProfiles;
             if (element.properties) entry.properties = element.properties;
             manifest[element.id] = entry;
         }
@@ -375,7 +375,7 @@ class DynamicObject {
     registerControllerObject(
         name: string, meshname: string, customid: string,
         position: number[], rotation: number[],
-        controllerType: string, handedness: 'left' | 'right'
+        inputProfiles: string[], handedness: 'left' | 'right'
     ): string {
         for (let i = 0; i < this.objectIds.length; i++) {
             if (this.objectIds[i].id === customid) {
@@ -391,7 +391,7 @@ class DynamicObject {
             name,
             mesh: meshname,
             fileType: 'gltf',
-            controllerType,
+            inputProfiles,
             properties: [{ controller: handedness }],
         };
         this.manifestEntries.push(dome);
