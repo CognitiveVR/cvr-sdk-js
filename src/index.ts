@@ -75,8 +75,16 @@ class C3D {
     this.xrSessionManager = null; 
     this._gazeRaycaster = null;
 
-    this.setUserProperty("c3d.version", this.core.config.SDKVersion);  
+    this.setUserProperty("c3d.version", this.core.config.SDKVersion);
     this.lastInputType = 'none';
+
+    // Identify the SDK, and default the engine for adapter-less ("plain core") usage.
+    // Engine adapters (Three.js / Babylon / PlayCanvas / Wonderland) overwrite c3d.app.engine
+    // via setDeviceProperty in their startTracking(), so this default only persists when no
+    // adapter is used. The pipeline's enrichment layer treats c3d.app.engine as a required
+    // core prop and drops sessions that omit it, so adapter-less sessions need a default here.
+    this.setDeviceProperty('SDKType', 'WebXR');
+    this.setDeviceProperty('AppEngine', 'WebXR');
     
     // Explicitly cast to unknown first to avoid circular type issues if strictly typed in deps
     const self = this as unknown as any; 

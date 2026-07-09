@@ -82,6 +82,17 @@ It supports a wide range of development environments by providing multiple modul
 * **ES Module**: Modern module standard, used by most bundlers and modern Node.js.
 * **CommonJS**: Compatible with older Node.js environments.
 
+### Using the core SDK without an engine adapter
+
+When you use an engine adapter (Three.js, Babylon.js, PlayCanvas, Wonderland), the adapter sets `c3d.app.engine` for you. If you use the **core SDK directly with no adapter** (plain WebXR/WebGL), the SDK now defaults `c3d.app.engine` to `"WebXR"` so your sessions are accepted by the analytics pipeline — its enrichment layer treats `c3d.app.engine` as a required property and drops sessions that omit it.
+
+As belt-and-suspenders, you can also set it yourself to better identify your integration (this overrides the default):
+
+```js
+c3d.setDeviceProperty('AppEngine', 'YourEngineName');
+c3d.setDeviceProperty('AppEngineVersion', '1.0.0');
+```
+
 ## 📚 Documentation 
 The **[Cognitive3D WebXR SDK documentation](http://docs.cognitive3d.com/webxr/get-started/)** explains how to integrate the SDK, track user experiences, export scenes, track dynamic objects, and more.
 
