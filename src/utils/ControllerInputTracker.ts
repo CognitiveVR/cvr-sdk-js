@@ -170,14 +170,18 @@ class ControllerInputTracker {
             const id = handedness === 'left' ? 'c3d_controller_left' : 'c3d_controller_right';
 
             if (!this.registeredIds.has(id)) {
-                const mesh = resolveControllerMesh(src.profiles, handedness, this.fallbackController);
+                // Guard src.profiles: per the WebXR spec it is always present, but polyfills and
+                // synthetic input sources can omit it. Match the defensiveness of getInputProfiles()
+                // and the hand path below so a malformed source can't throw and kill the frame loop.
+                const profiles = src.profiles ?? [];
+                const mesh = resolveControllerMesh(profiles, handedness, this.fallbackController);
                 const pose = frame.getPose(src.gripSpace, refSpace);
                 const pos = pose ? this._extractPos(pose) : [0, 0, 0];
                 const rot = pose ? this._extractRot(pose) : [0, 0, 0, 1];
                 const name = handedness === 'left' ? 'Left Controller' : 'Right Controller';
                 this.c3d.dynamicObject.registerControllerObject(
                     name, mesh, id, pos, rot,
-                    Array.from(src.profiles), handedness
+                    Array.from(profiles), handedness
                 );
                 this.registeredIds.add(id);
                 this.lastPoses.set(id, { pos, rot });

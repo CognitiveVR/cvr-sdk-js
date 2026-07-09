@@ -87,6 +87,15 @@ function createXRSessionMock({ mode, localFloorSpace, boundedFloorSpace, inputSo
     };
 }
 
+// The SDK core (coreInstance) is a singleton shared across every test in this file. Reset it
+// before each test so leaked state — e.g. a prior test that started a session without ending it,
+// leaving core.isSessionActive === true — can't bleed across tests and make them order-dependent.
+beforeEach(() => {
+    const c3d = new C3DAnalytics(settings);
+    c3d.core.setSessionStatus = false;
+    c3d.core.resetNewUserDeviceProperties();
+});
+
 test('Captures raw device-identity signals at construction (desktop profile)', () => {
     stubEnvironment({
         userAgent:
@@ -111,10 +120,14 @@ test('Captures raw device-identity signals at construction (desktop profile)', (
 
     // Raw UA + UA-CH, verbatim (no classification into OS/browser/device-type).
     expect(dp['c3d.device.user_agent']).toContain('Edg/120.0.0.0');
-    expect(dp['c3d.device.ua_brands']).toEqual([
-        { brand: 'Microsoft Edge', version: '120' },
-        { brand: 'Chromium', version: '120' },
-    ]);
+    // ua_brands is JSON-serialized to a scalar string so it survives ingestion (the pipeline
+    // drops array/object-valued session properties); the full raw data is preserved.
+    expect(dp['c3d.device.ua_brands']).toBe(
+        JSON.stringify([
+            { brand: 'Microsoft Edge', version: '120' },
+            { brand: 'Chromium', version: '120' },
+        ]),
+    );
     // Falsy-but-meaningful values must still be sent (guarded on !== null, not truthiness).
     expect(dp['c3d.device.ua_mobile']).toBe(false);
     expect(dp['c3d.device.max_touch_points']).toBe(0);
@@ -196,14 +209,39 @@ test('Sends raw XR input profiles instead of a classified HMD type/vendor', asyn
     await expect(c3d.startSession(xrSession)).resolves.toBe(true);
     const dp = c3d.getDeviceProperties();
 
-    // Flattened + de-duplicated raw profiles across both input sources.
-    expect(dp['c3d.device.xr.input_profiles']).toEqual([
-        'meta-quest-touch-plus',
-        'generic-trigger-squeeze-thumbstick',
-    ]);
+    // Union of raw profiles across both input sources, de-duplicated, sent as a comma-joined
+    // scalar string (arrays are dropped by ingestion).
+    expect(dp['c3d.device.xr.input_profiles']).toBe(
+        'meta-quest-touch-plus,generic-trigger-squeeze-thumbstick',
+    );
     // The classified keys are gone entirely.
     expect(dp['c3d.device.hmd.type']).toBeUndefined();
     expect(dp['c3d.device.vendor']).toBeUndefined();
+});
+
+test('input_profiles accumulates across controller churn (union, not overwrite)', async () => {
+    let changeHandler = null;
+    const xrSession = createXRSessionMock({
+        mode: 'immersive-vr',
+        localFloorSpace: { kind: 'local-floor' },
+        boundedFloorSpace: { kind: 'bounded-floor', boundsGeometry: [] },
+        inputSources: [
+            { handedness: 'right', targetRayMode: 'tracked-pointer', gripSpace: { kind: 'grip' }, profiles: ['meta-quest-touch-plus'] },
+        ],
+    });
+    // Capture the inputsourceschange listener the SDK registers so we can simulate churn.
+    xrSession.addEventListener = jest.fn((type, cb) => { if (type === 'inputsourceschange') changeHandler = cb; });
+
+    const c3d = makeC3D();
+    c3d.customEvent.send = jest.fn();
+    await expect(c3d.startSession(xrSession)).resolves.toBe(true);
+    expect(c3d.getDeviceProperties()['c3d.device.xr.input_profiles']).toBe('meta-quest-touch-plus');
+
+    // Controllers sleep / user switches to hand-tracking: inputsourceschange fires with NO
+    // controller profiles. The headset fingerprint captured earlier must NOT be erased.
+    expect(typeof changeHandler).toBe('function');
+    changeHandler({ session: { inputSources: [] } });
+    expect(c3d.getDeviceProperties()['c3d.device.xr.input_profiles']).toBe('meta-quest-touch-plus');
 });
 
 test('Controller manifest carries raw input profiles, not a classified controllerType', () => {

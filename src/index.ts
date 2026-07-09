@@ -145,7 +145,10 @@ class C3D {
 
     const uaBrands = getUABrands();
     if (uaBrands) {
-      this.setDeviceProperty('UABrands', uaBrands);
+      // Serialize to a JSON string: the ingestion pipeline drops array/object-valued session
+      // properties (verified), so the raw brands array must be sent as a scalar to land. The
+      // full raw data is preserved and the pipeline can JSON.parse or substring-match it.
+      this.setDeviceProperty('UABrands', JSON.stringify(uaBrands));
     }
 
     const uaMobile = getUAMobile();
@@ -293,13 +296,27 @@ class C3D {
 
     if (xrSession && xrSession.inputSources) {
         // Raw input profiles replace the removed classified c3d.device.hmd.type / c3d.device.vendor.
-        this.setDeviceProperty('XRInputProfiles', getInputProfiles(xrSession.inputSources));
+        // Two things to get right:
+        //  1. Accumulate the UNION of every profile seen across the session, not just the currently-
+        //     connected sources — controllers churn mid-session (sleep, lose tracking, or the user
+        //     switches to hand-tracking), and overwriting would erase the headset's hardware fingerprint.
+        //  2. Send it as a comma-joined STRING, not an array: the ingestion pipeline drops array-valued
+        //     session properties (verified), so an array would silently never reach the backend. Profile
+        //     ids contain no commas, and the pipeline substring-matches this string.
+        const seenInputProfiles = new Set<string>();
+        const recordInputProfiles = (inputSources: XRInputSourceArray | XRInputSource[]) => {
+            for (const profile of getInputProfiles(inputSources)) {
+                seenInputProfiles.add(profile);
+            }
+            this.setDeviceProperty('XRInputProfiles', Array.from(seenInputProfiles).join(','));
+        };
+        recordInputProfiles(xrSession.inputSources);
 
         xrSession.addEventListener('inputsourceschange', (event: XRInputSourcesChangeEvent) => {
             // @ts-ignore
             const xrEvent = event as XRInputSourcesChangeEvent;
             this.setSessionProperty('c3d.device.controllerinputs.enabled', hasTrackedControllers(xrEvent.session.inputSources));
-            this.setDeviceProperty('XRInputProfiles', getInputProfiles(xrEvent.session.inputSources));
+            recordInputProfiles(xrEvent.session.inputSources);
         });
     }
 
