@@ -1,6 +1,6 @@
 {
   "name": "@cognitive3d/analytics",
-  "version": "2.8.0",
+  "version": "2.9.0",
   "description": "This SDK allows you to integrate your Javascript Applications with Cognitive3D, which provides analytics and insights about your VR/AR/MR project.",
   "main": "lib/cjs/index.cjs.js",
   "module": "lib/esm/index.esm.js",
