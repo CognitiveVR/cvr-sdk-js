@@ -184,7 +184,7 @@
           session.requestAnimationFrame(onXRFrame);
 
           statusEl.textContent = 'Session active. Starting Cognitive3D SDK session...';
-          await window.C3DValidation.init({ xrSession: session });
+          await window.C3DValidation.init({ xrSession: session, experience: 'VR' });
           statusEl.textContent =
             'Session active — Cognitive3D SDK session started. To end it: pull the controller ' +
             'trigger, use your headset\'s system menu, or (on desktop) the "Exit VR" button. ' +
