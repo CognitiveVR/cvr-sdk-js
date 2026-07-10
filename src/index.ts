@@ -21,12 +21,18 @@ import {
   getHardwareConcurrency,
   getConnection,
   getGPUInfo,
+  getUserAgent,
+  getUABrands,
+  getUAMobile,
+  getMaxTouchPoints,
+  getPointerCoarse,
+  getHoverHover,
   isBrowser
 } from './utils/environment';
 
-import { 
+import {
   XRSessionManager,
-  getHMDInfo,
+  getInputProfiles,
   getEnabledFeatures,
   hasTrackedControllers,
   XRSessionManager as XRSessionManagerType,
@@ -97,7 +103,10 @@ class C3D {
 
     const deviceMemory = getDeviceMemory();
     if (deviceMemory) {
-      this.setDeviceProperty('DeviceMemory', deviceMemory * 1000); 
+      // MB (legacy convention, no unit in key name; the pipeline normalizes on this). Kept for continuity.
+      this.setDeviceProperty('DeviceMemory', deviceMemory * 1000);
+      // Raw navigator.deviceMemory (GB), unit encoded in the key name.
+      this.setDeviceProperty('DeviceMemoryGB', deviceMemory);
     }
 
     const screenHeight = getScreenHeight();
@@ -125,6 +134,41 @@ class C3D {
     if (gpuInfo) {
       this.setDeviceProperty('DeviceGPU', gpuInfo.renderer);
       this.setDeviceProperty('DeviceGPUVendor', gpuInfo.vendor);
+    }
+
+    // Raw device-identity signals for pipeline-side resolution (SDK does no classification).
+    // Booleans/numbers are gated on `!== null` so meaningful falsy values (false, 0) are still sent.
+    const userAgent = getUserAgent();
+    if (userAgent) {
+      this.setDeviceProperty('UserAgent', userAgent);
+    }
+
+    const uaBrands = getUABrands();
+    if (uaBrands) {
+      // Serialize to a JSON string: the ingestion pipeline drops array/object-valued session
+      // properties (verified), so the raw brands array must be sent as a scalar to land. The
+      // full raw data is preserved and the pipeline can JSON.parse or substring-match it.
+      this.setDeviceProperty('UABrands', JSON.stringify(uaBrands));
+    }
+
+    const uaMobile = getUAMobile();
+    if (uaMobile !== null) {
+      this.setDeviceProperty('UAMobile', uaMobile);
+    }
+
+    const maxTouchPoints = getMaxTouchPoints();
+    if (maxTouchPoints !== null) {
+      this.setDeviceProperty('DeviceMaxTouchPoints', maxTouchPoints);
+    }
+
+    const pointerCoarse = getPointerCoarse();
+    if (pointerCoarse !== null) {
+      this.setDeviceProperty('DevicePointerCoarse', pointerCoarse);
+    }
+
+    const hoverHover = getHoverHover();
+    if (hoverHover !== null) {
+      this.setDeviceProperty('DeviceHoverHover', hoverHover);
     }
   }
 
@@ -251,21 +295,28 @@ class C3D {
     }
 
     if (xrSession && xrSession.inputSources) {
-        const hmdInfo = getHMDInfo(xrSession.inputSources);
-        if (hmdInfo) {
-            this.setDeviceProperty('VRModel', hmdInfo.VRModel);
-            this.setDeviceProperty('VRVendor', hmdInfo.VRVendor);
-        }
+        // Raw input profiles replace the removed classified c3d.device.hmd.type / c3d.device.vendor.
+        // Two things to get right:
+        //  1. Accumulate the UNION of every profile seen across the session, not just the currently-
+        //     connected sources — controllers churn mid-session (sleep, lose tracking, or the user
+        //     switches to hand-tracking), and overwriting would erase the headset's hardware fingerprint.
+        //  2. Send it as a comma-joined STRING, not an array: the ingestion pipeline drops array-valued
+        //     session properties (verified), so an array would silently never reach the backend. Profile
+        //     ids contain no commas, and the pipeline substring-matches this string.
+        const seenInputProfiles = new Set<string>();
+        const recordInputProfiles = (inputSources: XRInputSourceArray | XRInputSource[]) => {
+            for (const profile of getInputProfiles(inputSources)) {
+                seenInputProfiles.add(profile);
+            }
+            this.setDeviceProperty('XRInputProfiles', Array.from(seenInputProfiles).join(','));
+        };
+        recordInputProfiles(xrSession.inputSources);
 
         xrSession.addEventListener('inputsourceschange', (event: XRInputSourcesChangeEvent) => {
             // @ts-ignore
             const xrEvent = event as XRInputSourcesChangeEvent;
-            const newHmdInfo = getHMDInfo(xrEvent.session.inputSources);
             this.setSessionProperty('c3d.device.controllerinputs.enabled', hasTrackedControllers(xrEvent.session.inputSources));
-            if (newHmdInfo) {
-                this.setDeviceProperty('VRModel', newHmdInfo.VRModel);
-                this.setDeviceProperty('VRVendor', newHmdInfo.VRVendor);
-            }
+            recordInputProfiles(xrEvent.session.inputSources);
         });
     }
 
