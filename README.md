@@ -98,3 +98,20 @@ The **[Cognitive3D WebXR SDK documentation](http://docs.cognitive3d.com/webxr/ge
 
 ## 🎮 Sample Projects
 For more detailed examples and complete project integrations (Mattercraft, ThreeJS, Wonderland Engine, etc..), please see our **[sample applications repository](https://github.com/CognitiveVR/c3d-webxr-sample-apps)** 
+
+## Coding Agent Skills
+
+This repo ships reusable skills under [`.claude/skills/`](.claude/skills/) — self-contained helpers (instructions plus a script) that a coding agent auto-discovers when you open the repo, so you can invoke them by name. The `SKILL.md` format originated with Claude Code and is now supported by a growing number of coding agents.
+
+Not using a coding agent (or yours doesn't support skills)? Each skill's `SKILL.md` documents the underlying script so you can run it directly.
+
+| Skill | What it does |
+| --- | --- |
+| [`validate-c3d-session`](.claude/skills/validate-c3d-session/) | Verify your session data has actually landed on the Cognitive3D platform. Give it your **organization API key** (dashboard → Organization Settings → API Keys — the organization ID is derived for you) and, optionally, a project ID; it reports whether recent sessions arrived plus a few top-level details (duration, name, participant, captured data types, device, test/junk tags). Read-only, works for any SDK/host, needs `curl` + `jq`. |
+
+Example:
+
+```bash
+export C3D_ORG_API_KEY='orgkey-…'   # keeps the key out of shell history
+.claude/skills/validate-c3d-session/scripts/validate-c3d-session.sh --project 1234
+```
