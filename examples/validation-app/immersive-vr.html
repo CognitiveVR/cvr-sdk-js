@@ -152,12 +152,21 @@
 
           session.addEventListener('end', onSessionEnd);
           session.addEventListener('inputsourceschange', renderOverlay);
+          // In-session exit: a controller trigger (select) ends the session. The 2D
+          // "Exit VR" button below is NOT presented to the user inside a headset, and the
+          // Immersive Web Emulator covers it with its own session overlay — so a controller
+          // trigger (or the headset's system-UI exit) is the reliable in-session exit.
+          // Either way, ending the session fires 'end' → onSessionEnd → c3d.endSession().
+          session.addEventListener('select', requestExit);
 
           session.requestAnimationFrame(onXRFrame);
 
           statusEl.textContent = 'Session active. Starting Cognitive3D SDK session...';
           await window.C3DValidation.init({ xrSession: session });
-          statusEl.textContent = 'Session active — Cognitive3D SDK session started. See signals in the overlay.';
+          statusEl.textContent =
+            'Session active — Cognitive3D SDK session started. To end it: pull the controller ' +
+            'trigger, use your headset\'s system menu, or (on desktop) the "Exit VR" button. ' +
+            'See signals in the overlay.';
           renderOverlay();
 
           exitBtn.disabled = false;
@@ -198,14 +207,14 @@
         renderOverlay();
       }
 
-      async function exitVR() {
-        if (session) {
-          await session.end();
-        }
+      // Ends the active XR session from any trigger (2D button, controller select, ...).
+      // session.end() fires the 'end' event → onSessionEnd → c3d.endSession().
+      function requestExit() {
+        if (session) session.end();
       }
 
       enterBtn.addEventListener('click', enterVR);
-      exitBtn.addEventListener('click', exitVR);
+      exitBtn.addEventListener('click', requestExit);
 
       checkSupport();
       renderOverlay();
