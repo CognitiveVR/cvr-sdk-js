@@ -100,9 +100,9 @@ signal panel), and render a fixed status/signal panel that stays visible after
 exiting VR/AR, so you can read the results in the headset browser itself or
 after taking the headset off.
 
-Each session's **participant name** is set to `{experience} — {OS · browser}`
+Each session's **name** (and participant name) is set to `{experience} — {OS · browser}`
 (e.g. `VR — macOS · Chrome`) so session types are easy to scan in the dashboard's
-Participant column — no dev/prod in the name (the dashboard already scopes by env).
+session list — no dev/prod in the name (the dashboard already scopes by env).
 
 ## Ending an immersive session
 
