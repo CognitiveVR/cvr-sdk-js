@@ -91,31 +91,53 @@
         window.C3DOverlay.render(window.__c3d || null, { xr: session });
       }
 
+      // Re-checkable: WebXR support can appear AFTER the page loads — a real headset connects,
+      // or the Immersive Web Emulator installs/replaces navigator.xr a moment after load (or when
+      // you engage it later). A one-shot check at load loses that race, so watchForSupport() keeps
+      // calling this and "Enter VR" enables as soon as support appears — no reload needed.
       async function checkSupport() {
+        if (session) return true;   // in a session — don't touch the UI or re-enable Enter
         if (!navigator.xr) {
-          statusEl.textContent =
-            'navigator.xr is not available in this browser. Immersive VR cannot be tested here — ' +
-            'browser-truth values are still shown in the overlay.';
-          renderOverlay();
-          return;
+          if (enterBtn.disabled) statusEl.textContent =
+            'Waiting for a WebXR device… open a headset or engage the Immersive Web Emulator ' +
+            '(DevTools → Immersive Web Emulator tab). "Enter VR" enables automatically when one appears.';
+          return false;
         }
         try {
           var supported = await navigator.xr.isSessionSupported('immersive-vr');
           if (!supported) {
-            statusEl.textContent =
-              'This browser/device reports no support for "immersive-vr" sessions. Browser-truth ' +
-              'values are still shown in the overlay.';
-            renderOverlay();
-            return;
+            if (enterBtn.disabled) statusEl.textContent =
+              'No "immersive-vr" device yet. Waiting… engage the Immersive Web Emulator (DevTools → ' +
+              'Immersive Web Emulator tab) or connect a headset — "Enter VR" enables automatically.';
+            return false;
           }
-          statusEl.textContent = configReady
-            ? 'immersive-vr is supported. Put on your headset and press "Enter VR".'
-            : 'immersive-vr is supported, but the app is not configured yet (see banner above).';
-          enterBtn.disabled = !configReady;
+          if (enterBtn.disabled) {   // support just became available
+            statusEl.textContent = configReady
+              ? 'immersive-vr is supported. Put on your headset and press "Enter VR".'
+              : 'immersive-vr is supported, but the app is not configured yet (see banner above).';
+            enterBtn.disabled = !configReady;
+          }
+          return true;
         } catch (err) {
-          statusEl.textContent = 'Error checking WebXR support: ' + err;
-          renderOverlay();
+          if (enterBtn.disabled) statusEl.textContent = 'Error checking WebXR support: ' + err;
+          return false;
         }
+      }
+
+      // Keep re-checking so "Enter VR" lights up whenever a WebXR device appears — no reload.
+      // The Immersive Web Emulator replaces navigator.xr wholesale (no observable 'devicechange'
+      // on the original object) and can be engaged after load, so we poll as well as listen for
+      // the standard signals; the poll stops once support is confirmed.
+      function watchForSupport() {
+        var timer = setInterval(function () {
+          checkSupport().then(function (ok) { if (ok) clearInterval(timer); });
+        }, 1500);
+        var recheck = function () { checkSupport(); };
+        if (navigator.xr && navigator.xr.addEventListener) {
+          try { navigator.xr.addEventListener('devicechange', recheck); } catch (e) { /* ignore */ }
+        }
+        document.addEventListener('visibilitychange', function () { if (!document.hidden) recheck(); });
+        window.addEventListener('focus', recheck);
       }
 
       function onXRFrame(time, frame) {
@@ -152,12 +174,21 @@
 
           session.addEventListener('end', onSessionEnd);
           session.addEventListener('inputsourceschange', renderOverlay);
+          // In-session exit: a controller trigger (select) ends the session. The 2D
+          // "Exit VR" button below is NOT presented to the user inside a headset, and the
+          // Immersive Web Emulator covers it with its own session overlay — so a controller
+          // trigger (or the headset's system-UI exit) is the reliable in-session exit.
+          // Either way, ending the session fires 'end' → onSessionEnd → c3d.endSession().
+          session.addEventListener('select', requestExit);
 
           session.requestAnimationFrame(onXRFrame);
 
           statusEl.textContent = 'Session active. Starting Cognitive3D SDK session...';
           await window.C3DValidation.init({ xrSession: session });
-          statusEl.textContent = 'Session active — Cognitive3D SDK session started. See signals in the overlay.';
+          statusEl.textContent =
+            'Session active — Cognitive3D SDK session started. To end it: pull the controller ' +
+            'trigger, use your headset\'s system menu, or (on desktop) the "Exit VR" button. ' +
+            'See signals in the overlay.';
           renderOverlay();
 
           exitBtn.disabled = false;
@@ -198,16 +229,17 @@
         renderOverlay();
       }
 
-      async function exitVR() {
-        if (session) {
-          await session.end();
-        }
+      // Ends the active XR session from any trigger (2D button, controller select, ...).
+      // session.end() fires the 'end' event → onSessionEnd → c3d.endSession().
+      function requestExit() {
+        if (session) session.end();
       }
 
       enterBtn.addEventListener('click', enterVR);
-      exitBtn.addEventListener('click', exitVR);
+      exitBtn.addEventListener('click', requestExit);
 
       checkSupport();
+      watchForSupport();
       renderOverlay();
     })();
   </script>

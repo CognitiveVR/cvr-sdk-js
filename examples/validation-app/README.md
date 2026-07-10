@@ -100,6 +100,23 @@ signal panel), and render a fixed status/signal panel that stays visible after
 exiting VR/AR, so you can read the results in the headset browser itself or
 after taking the headset off.
 
+## Ending an immersive session
+
+Ending an immersive session always ends the Cognitive3D session and sends the
+`c3d.sessionEnd` event: the pages listen for the XRSession `end` event, which
+fires no matter *how* the session ends. While immersed, end it with any of:
+
+- **the controller trigger** (a WebXR `select` action) — works on real
+  headsets and in the Immersive Web Emulator;
+- **the "Exit AR" button drawn over the view** on `immersive-ar.html` (via the
+  WebXR `dom-overlay` feature);
+- **your headset's own system UI** (or the emulator's exit control).
+
+The 2D **"Exit VR/AR" button at the top of the page** is for the desktop /
+pre-session case only. It is **not** presented to you inside a headset, and the
+Immersive Web Emulator draws its session view *over* the page (covering the
+button) — so use one of the in-session methods above while immersed.
+
 ## Scenario matrix (device-classification acceptance criteria)
 
 <!-- markdownlint-disable MD013 -->
@@ -150,6 +167,13 @@ after taking the headset off.
   fill it in, and re-run `node examples/validation-app/generate-config.mjs`.
 - **`window.C3D is not defined`** — run `npm run build` from the repo root
   first; `lib/` is gitignored and only exists after a build.
+- **The top "Exit VR/AR" button seems dead while immersed** — expected. During
+  an immersive session the 2D page isn't shown inside a headset, and the
+  Immersive Web Emulator draws its session overlay over the page, so the button
+  can't receive the click. End the session with the controller trigger, the
+  in-view "Exit AR" button (`immersive-ar.html`), or the runtime's own exit
+  control — all end the C3D session and send `c3d.sessionEnd`. See "Ending an
+  immersive session" above.
 
 ## What this app does *not* do
 
