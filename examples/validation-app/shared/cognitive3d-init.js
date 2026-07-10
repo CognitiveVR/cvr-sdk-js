@@ -34,6 +34,23 @@
     return window.C3D_VALIDATION_CONFIG[env] || null;
   }
 
+  // Cognitive3D dashboard "project sessions" views, one per environment. Backs the
+  // "See Sessions" link so a tester can jump straight to the sessions this app records.
+  var DASHBOARD_SESSIONS_URLS = {
+    dev: 'https://app.c3ddev.com/v3/projects/691/projectsessions/all',
+    prod: 'https://app.cognitive3d.com/v3/projects/5163/projectsessions/all'
+  };
+
+  /** A "See Sessions" link to the dashboard for the currently selected environment. */
+  function getSeeSessionsHtml() {
+    var link = document.createElement('a');
+    link.setAttribute('href', DASHBOARD_SESSIONS_URLS[getEnvParam()]);
+    link.setAttribute('target', '_blank');
+    link.setAttribute('rel', 'noopener');
+    link.textContent = 'See Sessions ↗';
+    return link.outerHTML;
+  }
+
   /**
    * Small HTML snippet: a dev/prod toggle link pair that preserves the
    * current path and any other query params. Pages drop this into a
@@ -63,7 +80,8 @@
       return link.outerHTML;
     }
 
-    return 'Environment: ' + linkFor('dev') + ' &nbsp;|&nbsp; ' + linkFor('prod');
+    return 'Environment: ' + linkFor('dev') + ' &nbsp;|&nbsp; ' + linkFor('prod') +
+           ' &nbsp;&middot;&nbsp; ' + getSeeSessionsHtml();
   }
 
   var UNHANDLED_REJECTION_FLAG = '__c3dValidationUnhandledRejectionHooked';
