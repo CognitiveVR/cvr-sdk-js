@@ -84,6 +84,41 @@
            ' &nbsp;&middot;&nbsp; ' + getSeeSessionsHtml();
   }
 
+  // Human-readable "OS · Browser" label for the running environment (e.g. "macOS · Chrome",
+  // "Android · Quest Browser"). Used only to build a scannable participant name — this is a
+  // display label, NOT a device signal (the SDK sends raw signals for the pipeline to classify).
+  function getEnvironmentLabel() {
+    var ua = navigator.userAgent || '';
+    var os = 'Unknown OS';
+    if (/Windows NT/.test(ua)) os = 'Windows';
+    else if (/iPhone|iPad|iPod/.test(ua)) os = 'iOS';
+    else if (/Mac OS X/.test(ua)) os = 'macOS';
+    else if (/CrOS/.test(ua)) os = 'ChromeOS';
+    else if (/Android/.test(ua)) os = 'Android';
+    else if (/Linux/.test(ua)) os = 'Linux';
+
+    var browser = 'Unknown Browser';
+    if (/OculusBrowser/.test(ua)) browser = 'Quest Browser';
+    else if (/Edg\//.test(ua)) browser = 'Edge';
+    else if (/SamsungBrowser/.test(ua)) browser = 'Samsung Internet';
+    else if (/OPR\//.test(ua)) browser = 'Opera';
+    else if (/Firefox\//.test(ua)) browser = 'Firefox';
+    else if (/Chrome\//.test(ua)) browser = 'Chrome';
+    else if (/Safari\//.test(ua)) browser = 'Safari';
+
+    return os + ' · ' + browser;
+  }
+
+  // Short experience tag for the participant name. Prefers the caller's explicit hint
+  // ('2D' | 'VR' | 'AR'); falls back to the XRSession mode, then to 2D/XR.
+  function getExperienceLabel(experience, xrSession) {
+    if (experience === '2D' || experience === 'VR' || experience === 'AR') return experience;
+    var mode = xrSession && xrSession.mode;
+    if (mode === 'immersive-vr') return 'VR';
+    if (mode === 'immersive-ar') return 'AR';
+    return xrSession ? 'XR' : '2D';
+  }
+
   var UNHANDLED_REJECTION_FLAG = '__c3dValidationUnhandledRejectionHooked';
 
   /**
@@ -126,7 +161,7 @@
    * and the overlay should render them regardless of whether the session
    * made it to the server.
    *
-   * @param {{ xrSession?: XRSession | null }} [options]
+   * @param {{ xrSession?: XRSession | null, experience?: '2D' | 'VR' | 'AR' }} [options]
    * @returns {Promise<InstanceType<typeof window.C3D>>}
    */
   async function init(options) {
@@ -174,6 +209,12 @@
       c3d.setDeviceProperty('AppName', 'C3D WebXR Validation App');
       c3d.setDeviceProperty('AppEngine', 'WebXR');
       c3d.setDeviceProperty('AppEngineVersion', (c3d.core && c3d.core.config && c3d.core.config.SDKVersion) || 'unknown');
+      // Participant name = experience + environment, e.g. "VR — macOS · Chrome", so session
+      // types are easy to scan in the dashboard's Participant column. Deliberately NO dev/prod —
+      // the dashboard already scopes by environment, so it would be redundant.
+      c3d.setParticipantFullName(
+        getExperienceLabel(options && options.experience, xrSession) + ' — ' + getEnvironmentLabel()
+      );
       await c3d.startSession(xrSession);
     } catch (err) {
       console.error(

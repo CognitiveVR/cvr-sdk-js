@@ -90,7 +90,7 @@
         startBtn.disabled = true;
         statusEl.textContent = 'Starting session...';
         try {
-          await window.C3DValidation.init({ xrSession: null });
+          await window.C3DValidation.init({ xrSession: null, experience: '2D' });
           statusEl.textContent = 'Session start requested — see the status badge in the overlay.';
           refreshBtn.disabled = false;
           endBtn.disabled = false;
