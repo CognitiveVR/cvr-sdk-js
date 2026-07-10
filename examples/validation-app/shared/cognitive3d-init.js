@@ -34,23 +34,17 @@
     return window.C3D_VALIDATION_CONFIG[env] || null;
   }
 
-  /** Escapes text for safe insertion into an HTML attribute or text node. */
-  function escapeHtml(value) {
-    return String(value)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
-  }
-
   /**
    * Small HTML snippet: a dev/prod toggle link pair that preserves the
    * current path and any other query params. Pages drop this into a
    * container element so switching environments is one click.
    *
-   * `location.pathname`/query params are same-origin, same-page values (not
-   * attacker-supplied network content), but we escape them anyway before
-   * building the href string, since the result is assigned via innerHTML.
+   * Built with DOM APIs (createElement / setAttribute / textContent) and
+   * serialized via outerHTML, so the browser owns all escaping. `env` is
+   * always the literal 'dev'/'prod' and the href is a same-origin relative
+   * path, but going through the DOM keeps this injection-safe by construction
+   * rather than relying on hand-rolled escaping of a string assigned via
+   * innerHTML.
    */
   function getEnvToggleHtml() {
     var current = getEnvParam();
@@ -58,11 +52,15 @@
 
     function linkFor(env) {
       params.set('env', env);
-      var href = escapeHtml(window.location.pathname + '?' + params.toString());
       if (env === current) {
-        return '<strong>[' + env + ']</strong>';
+        var label = document.createElement('strong');
+        label.textContent = '[' + env + ']';
+        return label.outerHTML;
       }
-      return '<a href="' + href + '">' + env + '</a>';
+      var link = document.createElement('a');
+      link.setAttribute('href', window.location.pathname + '?' + params.toString());
+      link.textContent = env;
+      return link.outerHTML;
     }
 
     return 'Environment: ' + linkFor('dev') + ' &nbsp;|&nbsp; ' + linkFor('prod');
