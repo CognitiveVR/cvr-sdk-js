@@ -263,6 +263,23 @@ test('Controller manifest carries raw input profiles, not a classified controlle
     expect(entry.controllerType).toBeUndefined();
 });
 
+test('registerControllerObject stays backward-compatible with a legacy string 6th arg', () => {
+    const c3d = makeC3D();
+
+    // Older callers passed a classified controllerType STRING as the 6th argument. It must not
+    // break or land as a non-array value: the string is coerced to a single-element array.
+    c3d.dynamicObject.registerControllerObject(
+        'Left Controller', 'GenericController', 'c3d_controller_left',
+        [0, 0, 0], [0, 0, 0, 1],
+        'quest_plus_touch_left', // legacy string, not an array
+        'left',
+    );
+
+    const entry = c3d.dynamicObject.manifestEntries.find((e) => e.id === 'c3d_controller_left');
+    expect(entry).toBeDefined();
+    expect(entry.inputProfiles).toEqual(['quest_plus_touch_left']);
+});
+
 test('setHMDType() is retained as a deprecated no-op that warns (no crash)', () => {
     const c3d = makeC3D();
     const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
