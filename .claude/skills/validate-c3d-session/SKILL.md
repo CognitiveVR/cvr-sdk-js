@@ -7,8 +7,8 @@ description: >-
   which data types were captured (gaze/events/sensors/dynamics/fixations), app/SDK/device,
   and test/junk tags. Use when someone asks to confirm sessions are arriving, validate an SDK
   integration end-to-end, check that a test session landed, or troubleshoot "is my data
-  reaching Cognitive3D?". Requires an organization API key (the org ID is derived from it) and
-  a project ID.
+  reaching Cognitive3D?". Requires an organization API key (the org ID is derived from it); the
+  project ID is optional and auto-selected when the organization has a single project.
 ---
 
 <!-- markdownlint-disable MD013 -->
@@ -33,8 +33,9 @@ not send or modify anything — so it is safe to run against any project, includ
    *organization* key (read access to the REST API), **not** the application/DATA key the SDK
    uses to *send* data. There is a separate key per environment (dev vs. prod).
    The organization ID is derived from the key automatically — you do not supply it.
-2. **Project ID** (integer) — required, because an organization can hold several projects.
-   Find it in the dashboard project URL (e.g. `.../projects/1234/...`).
+2. **Project ID** (integer) — the project to check. **Optional if the organization has exactly one
+   project** (it is auto-selected); required when there are several. Find it in the dashboard
+   project URL (e.g. `.../projects/1234/...`).
 3. **Environment** — `prod` (default → `api.cognitive3d.com`) or `dev` (→ `api.c3ddev.com`).
    Must match the key's environment.
 
@@ -55,7 +56,7 @@ Options:
 
 | Flag | Meaning |
 | --- | --- |
-| `--project <id>` | **Required.** Numeric project ID. |
+| `--project <id>` | Numeric project ID. Optional if the org has exactly one project (auto-selected); required otherwise. |
 | `--env <prod\|dev>` | API host / environment. Default `prod`. |
 | `--limit <n>` | How many recent sessions to show. Default `5`. |
 | `--session <id>` | Only report this specific SDK session id. |

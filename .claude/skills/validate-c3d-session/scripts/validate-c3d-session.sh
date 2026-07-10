@@ -7,8 +7,9 @@
 # Works for any SDK/host (WebXR, Unity, Unreal, ...) — it only reads the backend.
 #
 # Auth: an ORGANIZATION API key (dashboard -> Organization Settings -> API Keys).
-# The organization ID is derived from the key automatically. A project ID is
-# required because an organization can contain multiple projects.
+# The organization ID is derived from the key automatically. A project ID scopes
+# the check; it is optional if the organization has exactly one project (then it
+# is auto-selected), and required when the organization has several.
 #
 # The key is read from the C3D_ORG_API_KEY environment variable (preferred, so it
 # never appears in your shell history or the process list) or prompted for with
@@ -16,7 +17,7 @@
 #
 # Usage:
 #   export C3D_ORG_API_KEY='orgkey-xxxxxxxxxxxx'
-#   ./validate-c3d-session.sh --project 1234 [--env prod|dev] [--limit 5] [--session <id>] [--within <minutes>]
+#   ./validate-c3d-session.sh [--project 1234] [--env prod|dev] [--limit 5] [--session <id>] [--within <minutes>]
 #
 # Requires: bash, curl, jq.
 #
@@ -47,9 +48,10 @@ done
 command -v curl >/dev/null || { echo "error: curl is required" >&2; exit 1; }
 command -v jq   >/dev/null || { echo "error: jq is required (https://jqlang.github.io/jq/)" >&2; exit 1; }
 
-[ -n "$PROJECT" ] || { echo "error: --project <id> is required" >&2; usage; exit 2; }
-case "$PROJECT" in ''|*[!0-9]*) echo "error: --project must be numeric" >&2; exit 2;; esac
-case "$LIMIT"   in ''|*[!0-9]*) echo "error: --limit must be numeric" >&2; exit 2;; esac
+if [ -n "$PROJECT" ]; then
+  case "$PROJECT" in *[!0-9]*) echo "error: --project must be numeric" >&2; exit 2;; esac
+fi
+case "$LIMIT" in ''|*[!0-9]*) echo "error: --limit must be numeric" >&2; exit 2;; esac
 
 case "$ENVIRONMENT" in
   prod) BASE="https://api.cognitive3d.com";;
@@ -78,6 +80,24 @@ ORG_ID="$(api_get /v0/organizations/apiKeys/whoami 2>/dev/null | jq -r '.organiz
 if [ -z "$ORG_ID" ]; then
   echo "❌ Auth failed against ${BASE#https://}. Check the key is correct and that --env matches the key's environment (a prod key won't work on dev, or vice-versa)." >&2
   exit 1
+fi
+
+# ---- 1b. resolve project: auto-select when the organization has exactly one ----
+if [ -z "$PROJECT" ]; then
+  ORG_JSON="$(api_get "/v0/organizations/$ORG_ID" 2>/dev/null || true)"
+  PCOUNT="$(printf '%s' "$ORG_JSON" | jq -r '(.projects // []) | length' 2>/dev/null || echo 0)"
+  if [ "${PCOUNT:-0}" -eq 1 ]; then
+    PROJECT="$(printf '%s' "$ORG_JSON" | jq -r '.projects[0].id')"
+    PNAME="$(printf '%s' "$ORG_JSON" | jq -r '.projects[0].name // ""')"
+    echo "ℹ️  No --project given; using organization ${ORG_ID}'s only project: ${PROJECT}${PNAME:+ (${PNAME})}." >&2
+  elif [ "${PCOUNT:-0}" -eq 0 ]; then
+    echo "❌ Organization $ORG_ID has no projects — nothing to check." >&2
+    exit 2
+  else
+    echo "❌ Organization $ORG_ID has $PCOUNT projects — pass one with --project <id>:" >&2
+    printf '%s' "$ORG_JSON" | jq -r '.projects[] | "     \(.id)  \(.name)"' >&2
+    exit 2
+  fi
 fi
 
 # ---- 2. list recent PROJECT sessions ----
