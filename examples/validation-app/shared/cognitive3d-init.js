@@ -209,12 +209,15 @@
       c3d.setDeviceProperty('AppName', 'C3D WebXR Validation App');
       c3d.setDeviceProperty('AppEngine', 'WebXR');
       c3d.setDeviceProperty('AppEngineVersion', (c3d.core && c3d.core.config && c3d.core.config.SDKVersion) || 'unknown');
-      // Participant name = experience + environment, e.g. "VR — macOS · Chrome", so session
-      // types are easy to scan in the dashboard's Participant column. Deliberately NO dev/prod —
-      // the dashboard already scopes by environment, so it would be redundant.
-      c3d.setParticipantFullName(
-        getExperienceLabel(options && options.experience, xrSession) + ' — ' + getEnvironmentLabel()
-      );
+      // Label each session by experience + environment, e.g. "VR — macOS · Chrome", so session
+      // types are easy to scan in the dashboard. Set BOTH:
+      //  - the session name (c3d.sessionname) — the bold per-session label in the session list;
+      //    without it the backend auto-generates a random "Adjective Color Animal from City" name;
+      //  - the participant name (c3d.name) — shown in the Participant view/filter.
+      // Deliberately NO dev/prod in the label — the dashboard already scopes by environment.
+      var sessionLabel = getExperienceLabel(options && options.experience, xrSession) + ' — ' + getEnvironmentLabel();
+      c3d.setSessionName(sessionLabel);
+      c3d.setParticipantFullName(sessionLabel);
       await c3d.startSession(xrSession);
     } catch (err) {
       console.error(
