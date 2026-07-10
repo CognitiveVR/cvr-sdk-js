@@ -29,7 +29,10 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
       
       - name: Ensure npm 11.5.1 or later
-        run: npm install -g npm@latest
+        # Pin to the 11.x line: npm@latest is now 12.x, which requires Node >=22 and
+        # fails on this workflow's Node 20 runner (EBADENGINE). 11.x satisfies the
+        # ">=11.5.1" requirement and stays Node-20 compatible.
+        run: npm install -g npm@11
       
       - name: Install Dependencies
         run: npm ci
