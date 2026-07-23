@@ -23,7 +23,6 @@ interface GazePayload {
     sessionid: string;
     lobbyId?: string;
     part: number;
-    hmdtype?: string;
     interval?: number;
     data: GazeData[];
     properties?: Record<string, SessionPropertyValue>;
@@ -33,8 +32,7 @@ class GazeTracker {
     private core: CognitiveVRAnalyticsCore;
     private network: Network;
     private playerSnapshotInterval: number | undefined;
-    private HMDType: string | undefined;
-    public batchedGaze: GazeData[]; 
+    public batchedGaze: GazeData[];
     private jsonPart: number;
 
     constructor(core: CognitiveVRAnalyticsCore) {
@@ -42,7 +40,6 @@ class GazeTracker {
         // @ts-ignore
         this.network = new Network(core);
         this.playerSnapshotInterval = undefined;
-        this.HMDType = undefined;
         this.batchedGaze = [];
         this.jsonPart = 1;
     }
@@ -82,8 +79,14 @@ class GazeTracker {
         this.playerSnapshotInterval = interval;
     }
 
-    setHMDType(hmdtype: string): void {
-        this.HMDType = hmdtype;
+    /**
+     * @deprecated The `hmdtype` gaze-payload shadow channel was removed. HMD identity is now
+     * derived by the pipeline from the raw `c3d.device.xr.input_profiles` device signal. This
+     * method is retained as a no-op for backward compatibility and will be removed in a future
+     * major version.
+     */
+    setHMDType(_hmdtype: string): void {
+        console.warn('C3D: setHMDType() is deprecated and has no effect. HMD identity is derived from the raw c3d.device.xr.input_profiles device signal.');
     }
 
     sendData(): Promise<number | string> {
@@ -136,7 +139,6 @@ class GazeTracker {
             timestamp: parseInt(this.core.getTimestamp() as unknown as string, 10),
             sessionid: this.core.getSessionId(),
             part: this.jsonPart,
-            hmdtype: this.HMDType,
             interval: this.playerSnapshotInterval,
             data: this.batchedGaze,
             properties: {}

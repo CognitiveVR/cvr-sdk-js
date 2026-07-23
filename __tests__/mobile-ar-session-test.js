@@ -99,7 +99,10 @@ test('Keep local-floor and tracked controller behavior for immersive-vr sessions
     expect(c3d.core.sessionProperties['c3d.session.xr.reference_space']).toEqual('local-floor');
     expect(c3d.core.sessionProperties['c3d.session.xr.boundary_available']).toBe(true);
     expect(c3d.core.sessionProperties['c3d.device.controllerinputs.enabled']).toBe(true);
-    expect(c3d.getDeviceProperties()['c3d.device.hmd.type']).toEqual('Quest 2');
+    // Raw input profiles replace the removed classified c3d.device.hmd.type / c3d.device.vendor.
+    expect(c3d.getDeviceProperties()['c3d.device.xr.input_profiles']).toBe('oculus-touch-v3');
+    expect(c3d.getDeviceProperties()['c3d.device.hmd.type']).toBeUndefined();
+    expect(c3d.getDeviceProperties()['c3d.device.vendor']).toBeUndefined();
 
     await expect(c3d.endSession()).resolves.toEqual(200);
 });

@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Cognitive3D WebXR SDK — Validation App</title>
+<style>
+  body {
+    font-family: -apple-system, Helvetica, Arial, sans-serif;
+    margin: 0 auto; max-width: 760px; padding: 24px 20px 48px;
+    background: #10121a; color: #eee; line-height: 1.5;
+  }
+  h1 { font-size: 1.5em; }
+  h2 { font-size: 1.15em; margin-top: 1.8em; }
+  a { color: #6cb6ff; }
+  code { background: #222; color: #eee; padding: 1px 5px; border-radius: 3px; font-size: .92em; }
+  .cards { display: grid; gap: 12px; margin: 16px 0; }
+  .card {
+    display: block; padding: 14px 16px; border: 1px solid #2a2f3e; border-radius: 8px;
+    background: #171a24; text-decoration: none; color: inherit;
+  }
+  .card:hover { border-color: #4a90d9; }
+  .card b { color: #fff; font-size: 1.05em; }
+  .card span { color: #aab; font-size: .92em; }
+  ol { padding-left: 1.3em; }
+  li { margin: 6px 0; }
+  .note { color: #aab; font-size: .9em; }
+  .tip { background: #16240f; border: 1px solid #3f7a1f; border-radius: 6px; padding: 10px 14px; margin: 14px 0; }
+</style>
+</head>
+<body>
+  <h1>Cognitive3D WebXR SDK &mdash; Validation App</h1>
+  <p class="note">
+    Sends real WebXR sessions with real device signals (<code>c3d.device.*</code>) to
+    Cognitive3D, so we can validate how the pipeline classifies each device / browser /
+    headset. Pick a page to run:
+  </p>
+
+  <div class="cards">
+    <a class="card" href="inline.html?env=dev">
+      <b>inline.html</b><br>
+      <span>Desktop or phone browser &mdash; no XR. Start here on a laptop or phone.</span>
+    </a>
+    <a class="card" href="immersive-vr.html?env=dev">
+      <b>immersive-vr.html</b><br>
+      <span>VR headset (or the emulator). Requests an <code>immersive-vr</code> session.</span>
+    </a>
+    <a class="card" href="immersive-ar.html?env=dev">
+      <b>immersive-ar.html</b><br>
+      <span>Passthrough-capable headset (or the emulator). Requests an <code>immersive-ar</code> session.</span>
+    </a>
+  </div>
+  <p class="note">
+    Append <code>?env=dev</code> (default) or <code>?env=prod</code> to any page to target the
+    dev or prod backend.
+  </p>
+  <p class="note">
+    See recorded sessions in the Cognitive3D dashboard:
+    <a href="https://app.c3ddev.com/v3/projects/691/projectsessions/all"
+       target="_blank" rel="noopener">dev</a> &middot;
+    <a href="https://app.cognitive3d.com/v3/projects/5163/projectsessions/all"
+       target="_blank" rel="noopener">prod</a>
+  </p>
+  <p class="note">
+    Each session's <b>name</b> is set to its type + environment (e.g.
+    <code>VR — macOS · Chrome</code>), so you can scan session types at a glance in the
+    dashboard's session list.
+  </p>
+
+  <h2>No headset? Test with the Immersive Web Emulator</h2>
+  <p class="note">
+    A Chrome extension from Meta that fakes a VR/AR headset, so the immersive pages work on a
+    desktop browser.
+  </p>
+  <ol>
+    <li><b>Install</b> the
+      <a href="https://chromewebstore.google.com/detail/immersive-web-emulator/cgffilbpcibhmcfbgggfhfolhkfbhmik"
+         target="_blank" rel="noopener">Immersive Web Emulator</a>
+      from the Chrome Web Store, then reload this site.</li>
+    <li><b>Enable</b> it: open DevTools (<code>F12</code>) and switch to the
+      <b>Immersive Web Emulator</b> tab, then pick a device (e.g. <b>Meta Quest 3</b>). The VR/AR
+      pages will then report support and the <b>Enter</b> button becomes active.</li>
+    <li><b>Use</b> it: open <a href="immersive-vr.html?env=dev">immersive-vr</a> or
+      <a href="immersive-ar.html?env=dev">immersive-ar</a>, click <b>Enter</b>, and drag the
+      headset / controllers in the emulator panel to move around.</li>
+    <li><b>Exit</b>: pull the emulated controller's <b>trigger</b> to end the session (AR also shows
+      an <b>Exit AR</b> button over the view). The plain <b>Exit</b> button at the top of the page is
+      hidden behind the emulator's overlay while immersed, so use the trigger.</li>
+  </ol>
+  <div class="tip">
+    Ending a session by any method (trigger, in-view button, or the emulator's own exit control)
+    ends the Cognitive3D session and sends the <code>c3d.sessionEnd</code> event automatically.
+  </div>
+
+  <p class="note">
+    Full setup and the device-classification matrix are in <a href="README.md">README.md</a>.
+  </p>
+</body>
+</html>

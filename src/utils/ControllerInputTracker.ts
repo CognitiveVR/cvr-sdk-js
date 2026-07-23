@@ -10,7 +10,7 @@ interface C3DInstance {
         registerControllerObject: (
             name: string, meshname: string, customid: string,
             position: number[], rotation: number[],
-            controllerType: string, handedness: 'left' | 'right'
+            inputProfiles: string[], handedness: 'left' | 'right'
         ) => string;
         addInputSnapshot: (
             id: string, position: number[], rotation: number[],
@@ -23,83 +23,47 @@ interface C3DInstance {
     lastInputType: 'none' | 'hand' | 'controller';
 }
 
-interface ControllerProfile {
-    mesh: (h: 'left' | 'right') => string;
-    controllerType: (h: 'left' | 'right') => string;
-}
+// Maps a raw WebXR profile id to the dashboard mesh used to render the controller.
+// This is rendering configuration only. Controller *identity* is carried by the raw
+// input profiles transmitted alongside (see registerControllerObject) and is never
+// classified in the SDK.
+type ControllerMesh = (h: 'left' | 'right') => string;
 
-const CONTROLLER_PROFILE_MAP: Record<string, ControllerProfile> = {
-    'meta-quest-touch-plus': {
-        mesh: h => h === 'left' ? 'QuestPlusTouchLeft' : 'QuestPlusTouchRight',
-        controllerType: h => h === 'left' ? 'quest_plus_touch_left' : 'quest_plus_touch_right',
-    },
-    'meta-quest-touch-pro': {
-        mesh: h => h === 'left' ? 'QuestProTouchLeft' : 'QuestProTouchRight',
-        controllerType: h => h === 'left' ? 'quest_pro_touch_left' : 'quest_pro_touch_right',
-    },
-    'oculus-touch-v3': {
-        mesh: h => h === 'left' ? 'OculusQuestTouchLeft' : 'OculusQuestTouchRight',
-        controllerType: h => h === 'left' ? 'oculus_quest_touch_left' : 'oculus_quest_touch_right',
-    },
-    'oculus-touch-v2': {
-        mesh: h => h === 'left' ? 'OculusQuestTouchLeft' : 'OculusQuestTouchRight',
-        controllerType: h => h === 'left' ? 'oculus_quest_touch_left' : 'oculus_quest_touch_right',
-    },
-    'oculus-touch': {
-        mesh: h => h === 'left' ? 'OculusRiftTouchLeft' : 'OculusRiftTouchRight',
-        controllerType: h => h === 'left' ? 'oculus_rift_controller_left' : 'oculus_rift_controller_right',
-    },
-    'htc-vive-focus-3': {
-        mesh: h => h === 'left' ? 'ViveFocusControllerLeft' : 'ViveFocusControllerRight',
-        controllerType: h => h === 'left' ? 'vive_focus_controller_left' : 'vive_focus_controller_right',
-    },
-    'htc-vive': {
-        mesh: _ => 'ViveController',
-        controllerType: _ => 'vive_controller',
-    },
-    'valve-index': {
-        mesh: h => h === 'left' ? 'SteamIndexLeft' : 'SteamIndexRight',
-        controllerType: h => h === 'left' ? 'steam_index_left' : 'steam_index_right',
-    },
-    'microsoft-mixed-reality': {
-        mesh: h => h === 'left' ? 'WindowsMixedRealityLeft' : 'WindowsMixedRealityRight',
-        controllerType: h => h === 'left' ? 'windows_mixed_reality_controller_left' : 'windows_mixed_reality_controller_right',
-    },
-    'hp-mixed-reality': {
-        mesh: h => h === 'left' ? 'WindowsMixedRealityLeft' : 'WindowsMixedRealityRight',
-        controllerType: h => h === 'left' ? 'windows_mixed_reality_controller_left' : 'windows_mixed_reality_controller_right',
-    },
-    'pico-neo3-controller': {
-        mesh: h => h === 'left' ? 'PicoNeo3ControllerLeft' : 'PicoNeo3ControllerRight',
-        controllerType: h => h === 'left' ? 'pico_neo_3_eye_controller_left' : 'pico_neo_3_eye_controller_right',
-    },
-    'pico-4-controller': {
-        mesh: h => h === 'left' ? 'PicoNeo4ControllerLeft' : 'PicoNeo4ControllerRight',
-        controllerType: h => h === 'left' ? 'pico_neo_4_eye_controller_left' : 'pico_neo_4_eye_controller_right',
-    },
+const CONTROLLER_MESH_MAP: Record<string, ControllerMesh> = {
+    'meta-quest-touch-plus': h => h === 'left' ? 'QuestPlusTouchLeft' : 'QuestPlusTouchRight',
+    'meta-quest-touch-pro': h => h === 'left' ? 'QuestProTouchLeft' : 'QuestProTouchRight',
+    'oculus-touch-v3': h => h === 'left' ? 'OculusQuestTouchLeft' : 'OculusQuestTouchRight',
+    'oculus-touch-v2': h => h === 'left' ? 'OculusQuestTouchLeft' : 'OculusQuestTouchRight',
+    'oculus-touch': h => h === 'left' ? 'OculusRiftTouchLeft' : 'OculusRiftTouchRight',
+    'htc-vive-focus-3': h => h === 'left' ? 'ViveFocusControllerLeft' : 'ViveFocusControllerRight',
+    'htc-vive': _ => 'ViveController',
+    'valve-index': h => h === 'left' ? 'SteamIndexLeft' : 'SteamIndexRight',
+    'microsoft-mixed-reality': h => h === 'left' ? 'WindowsMixedRealityLeft' : 'WindowsMixedRealityRight',
+    'hp-mixed-reality': h => h === 'left' ? 'WindowsMixedRealityLeft' : 'WindowsMixedRealityRight',
+    'pico-neo3-controller': h => h === 'left' ? 'PicoNeo3ControllerLeft' : 'PicoNeo3ControllerRight',
+    'pico-4-controller': h => h === 'left' ? 'PicoNeo4ControllerLeft' : 'PicoNeo4ControllerRight',
 };
 
-const UNKNOWN_PROFILE: ControllerProfile = {
-    mesh: _ => 'GenericController',
-    controllerType: h => h === 'left' ? 'unknown_controller_left' : 'unknown_controller_right',
-};
+const UNKNOWN_MESH: ControllerMesh = _ => 'GenericController';
 
-function resolveControllerProfile(profiles: readonly string[], fallback?: string): ControllerProfile {
+// Resolves the render mesh only. `fallbackController` selects a mesh for unrecognized
+// profiles; it does not influence any identity signal — the raw profiles are always sent.
+export function resolveControllerMesh(profiles: readonly string[], handedness: 'left' | 'right', fallback?: string): string {
     for (const profile of profiles) {
         const lower = profile.toLowerCase();
-        for (const key of Object.keys(CONTROLLER_PROFILE_MAP)) {
-            if (lower.includes(key)) return CONTROLLER_PROFILE_MAP[key];
+        for (const key of Object.keys(CONTROLLER_MESH_MAP)) {
+            if (lower.includes(key)) return CONTROLLER_MESH_MAP[key](handedness);
         }
     }
     if (fallback) {
-        const fallbackProfile = CONTROLLER_PROFILE_MAP[fallback];
-        if (fallbackProfile) {
-            console.warn(`C3D: Unrecognized controller profiles [${profiles.join(', ')}]. Using configured fallback '${fallback}'.`);
-            return fallbackProfile;
+        const fallbackMesh = CONTROLLER_MESH_MAP[fallback];
+        if (fallbackMesh) {
+            console.warn(`C3D: Unrecognized controller profiles [${profiles.join(', ')}]. Using configured fallback mesh '${fallback}'.`);
+            return fallbackMesh(handedness);
         }
     }
-    console.warn(`C3D: Unrecognized controller profiles [${profiles.join(', ')}]. Using generic unknown controller.`);
-    return UNKNOWN_PROFILE;
+    console.warn(`C3D: Unrecognized controller profiles [${profiles.join(', ')}]. Using generic controller mesh.`);
+    return UNKNOWN_MESH(handedness);
 }
 
 const ANALOG_THROTTLE_MS = 100;
@@ -206,14 +170,18 @@ class ControllerInputTracker {
             const id = handedness === 'left' ? 'c3d_controller_left' : 'c3d_controller_right';
 
             if (!this.registeredIds.has(id)) {
-                const profile = resolveControllerProfile(src.profiles, this.fallbackController);
+                // Guard src.profiles: per the WebXR spec it is always present, but polyfills and
+                // synthetic input sources can omit it. Match the defensiveness of getInputProfiles()
+                // and the hand path below so a malformed source can't throw and kill the frame loop.
+                const profiles = src.profiles ?? [];
+                const mesh = resolveControllerMesh(profiles, handedness, this.fallbackController);
                 const pose = frame.getPose(src.gripSpace, refSpace);
                 const pos = pose ? this._extractPos(pose) : [0, 0, 0];
                 const rot = pose ? this._extractRot(pose) : [0, 0, 0, 1];
                 const name = handedness === 'left' ? 'Left Controller' : 'Right Controller';
                 this.c3d.dynamicObject.registerControllerObject(
-                    name, profile.mesh(handedness), id, pos, rot,
-                    profile.controllerType(handedness), handedness
+                    name, mesh, id, pos, rot,
+                    Array.from(profiles), handedness
                 );
                 this.registeredIds.add(id);
                 this.lastPoses.set(id, { pos, rot });
@@ -316,9 +284,8 @@ class ControllerInputTracker {
 
             if (!this.registeredIds.has(id)) {
                 const meshname = handedness === 'left' ? 'handLeft' : 'handRight';
-                const ctType = handedness === 'left' ? 'hand_left' : 'hand_right';
                 const name = handedness === 'left' ? 'Left Hand' : 'Right Hand';
-                this.c3d.dynamicObject.registerControllerObject(name, meshname, id, pos, rot, ctType, handedness);
+                this.c3d.dynamicObject.registerControllerObject(name, meshname, id, pos, rot, Array.from(src.profiles ?? []), handedness);
                 this.registeredIds.add(id);
                 continue;
             }

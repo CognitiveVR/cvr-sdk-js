@@ -44,6 +44,7 @@ export class CognitiveVRAnalyticsCore {
             DeviceType: 'c3d.device.type',
             DeviceModel: 'c3d.device.model',
             DeviceMemory: 'c3d.device.memory',
+            DeviceMemoryGB: 'c3d.device.memoryInGB',
             DeviceOS: 'c3d.device.os',
             DevicePlatform: 'c3d.device.platform',
             DeviceCPU: 'c3d.device.cpu',
@@ -55,6 +56,15 @@ export class CognitiveVRAnalyticsCore {
             DeviceGPUMemory: 'c3d.device.gpu.memory',
             DeviceScreenHeight: 'c3d.device.screen.height',
             DeviceScreenWidth: 'c3d.device.screen.width',
+            DeviceMaxTouchPoints: 'c3d.device.max_touch_points',
+            DevicePointerCoarse: 'c3d.device.pointer_coarse',
+            DeviceHoverHover: 'c3d.device.hover_hover',
+            UserAgent: 'c3d.device.user_agent',
+            UABrands: 'c3d.device.ua_brands',
+            UAMobile: 'c3d.device.ua_mobile',
+            // Raw WebXR input profiles — replaces the removed classified
+            // c3d.device.hmd.type / c3d.device.vendor (pipeline resolves identity).
+            XRInputProfiles: 'c3d.device.xr.input_profiles',
             EyeTracking: 'c3d.device.eyetracking.enabled',
             HandTracking: 'c3d.app.handtracking.enabled',
             NetworkEffectiveType: 'c3d.network.effectiveType',
@@ -62,8 +72,6 @@ export class CognitiveVRAnalyticsCore {
             NetworkRTT: 'c3d.network.rtt',
             SDKType: 'c3d.sdk.type',
             SDKVersion: 'c3d.sdk.version',
-            VRModel: 'c3d.device.hmd.type',
-            VRVendor: 'c3d.device.vendor',
         };
     }
 

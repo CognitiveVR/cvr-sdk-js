@@ -20,6 +20,7 @@ export interface Settings {
     customEventBatchSize?: number;
     gazeBatchSize?: number;
     GazeInterval?: number;
+    /** @deprecated No longer has any effect; see GazeTracker.setHMDType. */
     HMDType?: string;
     gazeTrackingSource?: 'webxr' | 'engine';
     fallbackController?: string;
@@ -39,6 +40,7 @@ class Config {
     public gazeBatchSize: number;
     public GazeInterval: number;
     public allSceneData: SceneConfig[];
+    /** @deprecated No longer has any effect; retained for backward compatibility. */
     public HMDType?: string;
     public gazeTrackingSource: 'webxr' | 'engine';
     public fallbackController?: string;
@@ -76,6 +78,10 @@ class Config {
      */
     set settings(settings: Settings) {
         if (settings.LOG !== undefined) this.LOG = settings.LOG;
+
+        if (settings.HMDType !== undefined) {
+            console.warn('C3D: the `HMDType` setting is deprecated and has no effect. HMD identity is derived from the raw c3d.device.xr.input_profiles device signal.');
+        }
 
         // Map Settings keys to Config keys
         const keys: (keyof Settings)[] = [

@@ -82,8 +82,36 @@ It supports a wide range of development environments by providing multiple modul
 * **ES Module**: Modern module standard, used by most bundlers and modern Node.js.
 * **CommonJS**: Compatible with older Node.js environments.
 
+### Using the core SDK without an engine adapter
+
+When you use an engine adapter (Three.js, Babylon.js, PlayCanvas, Wonderland), the adapter sets `c3d.app.engine` for you. If you use the **core SDK directly with no adapter** (plain WebXR/WebGL), the SDK now defaults `c3d.app.engine` to `"WebXR"` so your sessions are accepted by the analytics pipeline — its enrichment layer treats `c3d.app.engine` as a required property and drops sessions that omit it.
+
+As belt-and-suspenders, you can also set it yourself to better identify your integration (this overrides the default):
+
+```js
+c3d.setDeviceProperty('AppEngine', 'YourEngineName');
+c3d.setDeviceProperty('AppEngineVersion', '1.0.0');
+```
+
 ## 📚 Documentation 
 The **[Cognitive3D WebXR SDK documentation](http://docs.cognitive3d.com/webxr/get-started/)** explains how to integrate the SDK, track user experiences, export scenes, track dynamic objects, and more.
 
 ## 🎮 Sample Projects
 For more detailed examples and complete project integrations (Mattercraft, ThreeJS, Wonderland Engine, etc..), please see our **[sample applications repository](https://github.com/CognitiveVR/c3d-webxr-sample-apps)** 
+
+## Coding Agent Skills
+
+This repo ships reusable skills under [`.claude/skills/`](.claude/skills/) — self-contained helpers (instructions plus a script) that a coding agent auto-discovers when you open the repo, so you can invoke them by name. The `SKILL.md` format originated with Claude Code and is now supported by a growing number of coding agents.
+
+Not using a coding agent (or yours doesn't support skills)? Each skill's `SKILL.md` documents the underlying script so you can run it directly.
+
+| Skill | What it does |
+| --- | --- |
+| [`validate-c3d-session`](.claude/skills/validate-c3d-session/) | Verify your session data has actually landed on the Cognitive3D platform. Give it your **organization API key** (dashboard → Organization Settings → API Keys — the organization ID is derived for you) and, optionally, a project ID; it reports whether recent sessions arrived plus a few top-level details (duration, name, participant, captured data types, device, test/junk tags). Read-only, works for any SDK/host, needs `curl` + `jq`. |
+
+Example:
+
+```bash
+export C3D_ORG_API_KEY='orgkey-…'   # keeps the key out of shell history
+.claude/skills/validate-c3d-session/scripts/validate-c3d-session.sh --project 1234
+```
