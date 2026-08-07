@@ -52,7 +52,7 @@ class Sensors {
 
         this.sensorCount++;
         if (this.core.isSessionActive && this.sensorCount >= this.core.config.sensorDataLimit) {
-            this.sendData();
+            this.sendData().catch((err) => console.warn('C3D: Sensor auto-flush failed', err));
         }
     }
 
@@ -80,7 +80,8 @@ class Sensors {
             this.jsonPart++;
 
             this.network.networkCall('sensors', payload)
-                .then(res => (res === 200) ? resolve(res as number) : reject(res));
+                .then(res => (res === 200) ? resolve(res as number) : reject(res))
+                .catch(err => reject(err));
             
             this.sensorCount = 0;
             this.allSensors = [];

@@ -73,3 +73,4 @@ docs/audits/2026-07-08-raw-device-signals-design.md
 # validation-app local config / secrets (never commit real keys)
 examples/validation-app/config.js
 examples/validation-app/.env
+examples/new-features-demo/config.js

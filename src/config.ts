@@ -20,12 +20,24 @@ export interface Settings {
     customEventBatchSize?: number;
     gazeBatchSize?: number;
     GazeInterval?: number;
-    /** @deprecated No longer has any effect; see GazeTracker.setHMDType. */
+    
     HMDType?: string;
     gazeTrackingSource?: 'webxr' | 'engine';
     fallbackController?: string;
+    autoFetchRemoteVariables?: boolean;
+    enableRoomCapture?: boolean;
+    roomDataLimit?: number;
+    enableFixation?: boolean;
+    fixationDataLimit?: number;
+    fixationMinDurationMs?: number;
+    fixationMaxAngle?: number;
+    fixationMaxBlinkMs?: number;
+    fixationSaccadeEndMs?: number;
+    fixationMaxOffDynamicMs?: number;
+    fixationDynamicSizeMultiplier?: number;
+    fixationFocusSizeMultiplier?: number;
     allSceneData?: SceneConfig[];
-    [key: string]: unknown; // Allow flexibility
+    [key: string]: unknown;
 }
 
 class Config {
@@ -40,11 +52,23 @@ class Config {
     public gazeBatchSize: number;
     public GazeInterval: number;
     public allSceneData: SceneConfig[];
-    /** @deprecated No longer has any effect; retained for backward compatibility. */
+    
     public HMDType?: string;
     public gazeTrackingSource: 'webxr' | 'engine';
     public fallbackController?: string;
-    [key: string]: any; // Index signature for dynamic access in setter
+    public autoFetchRemoteVariables: boolean;
+    public enableRoomCapture: boolean;
+    public roomDataLimit: number;
+    public enableFixation: boolean;
+    public fixationDataLimit: number;
+    public fixationMinDurationMs: number;
+    public fixationMaxAngle: number;
+    public fixationMaxBlinkMs: number;
+    public fixationSaccadeEndMs: number;
+    public fixationMaxOffDynamicMs: number;
+    public fixationDynamicSizeMultiplier: number;
+    public fixationFocusSizeMultiplier: number;
+    [key: string]: any;
 
     constructor() {
         this.LOG = false;
@@ -61,8 +85,20 @@ class Config {
         this.gazeTrackingSource = 'webxr';
         this.customEventBatchSize = 256;
         this.gazeBatchSize = 256;
-        this.GazeInterval = 0.1; 
+        this.GazeInterval = 0.1;
         this.allSceneData = [];
+        this.autoFetchRemoteVariables = false;
+        this.enableRoomCapture = true;
+        this.roomDataLimit = 64;
+        this.enableFixation = true;
+        this.fixationDataLimit = 256;
+        this.fixationMinDurationMs = 60;
+        this.fixationMaxAngle = 1;
+        this.fixationMaxBlinkMs = 400;
+        this.fixationSaccadeEndMs = 10;
+        this.fixationMaxOffDynamicMs = 500;
+        this.fixationDynamicSizeMultiplier = 1.25;
+        this.fixationFocusSizeMultiplier = 2;
     }
 
     sceneData(sceneName: string, sceneId: string, versionNumber: string): SceneConfig {
@@ -73,9 +109,6 @@ class Config {
         };
     }
 
-    /**
-     * Setter to apply bulk settings
-     */
     set settings(settings: Settings) {
         if (settings.LOG !== undefined) this.LOG = settings.LOG;
 
@@ -88,7 +121,12 @@ class Config {
             'SDKVersion', 'networkHost', 'APIKey', 'networkVersion',
             'sensorDataLimit', 'dynamicDataLimit', 'customEventBatchSize',
             'gazeBatchSize', 'GazeInterval', 'HMDType', 'allSceneData', 'gazeTrackingSource',
-            'fallbackController'
+            'fallbackController',
+            'autoFetchRemoteVariables', 'enableRoomCapture', 'roomDataLimit',
+            'enableFixation', 'fixationDataLimit', 'fixationMinDurationMs',
+            'fixationMaxAngle', 'fixationMaxBlinkMs', 'fixationSaccadeEndMs',
+            'fixationMaxOffDynamicMs', 'fixationDynamicSizeMultiplier',
+            'fixationFocusSizeMultiplier'
         ];
 
         for (const key of keys) {

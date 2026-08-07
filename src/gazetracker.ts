@@ -1,5 +1,6 @@
 import Network from './network';
 import { CognitiveVRAnalyticsCore, SessionPropertyValue } from './core';
+import type { GazeFixationSink } from './fixationtracker';
 
 // Define the structure of a single gaze data point
 interface GazeData {
@@ -14,6 +15,9 @@ interface GazeData {
 export interface GazeHit {
     objectId?: string | null;
     point: number[];
+    worldPoint?: number[];
+    objectPosition?: number[];
+    objectRotation?: number[];
 }
 
 // Interface for the payload sent to the network
@@ -34,6 +38,7 @@ class GazeTracker {
     private playerSnapshotInterval: number | undefined;
     public batchedGaze: GazeData[];
     private jsonPart: number;
+    private fixationSink: GazeFixationSink | null;
 
     constructor(core: CognitiveVRAnalyticsCore) {
         this.core = core;
@@ -42,6 +47,11 @@ class GazeTracker {
         this.playerSnapshotInterval = undefined;
         this.batchedGaze = [];
         this.jsonPart = 1;
+        this.fixationSink = null;
+    }
+
+    setFixationSink(sink: GazeFixationSink | null): void {
+        this.fixationSink = sink;
     }
 
     recordGaze(position: number[], rotation: number[], gazeHit?: GazeHit | number[] | null, objectId?: string): void {
@@ -68,10 +78,25 @@ class GazeTracker {
              data['o'] = objectId;
         }
 
+        if (this.fixationSink) {
+            const structured = gazeHit && !Array.isArray(gazeHit) ? gazeHit : null;
+            const hitObjectId = data.o !== undefined ? data.o : (objectId !== undefined ? objectId : null);
+            const worldPoint = structured && structured.worldPoint
+                ? [...structured.worldPoint]
+                : (!hitObjectId && data.g ? [...data.g] : null);
+            this.fixationSink.recordGazeSample(ts, [...position], {
+                world: worldPoint,
+                local: hitObjectId && data.g ? [...data.g] : null,
+                objectId: hitObjectId,
+                objectPosition: structured && structured.objectPosition ? [...structured.objectPosition] : null,
+                objectRotation: structured && structured.objectRotation ? [...structured.objectRotation] : null,
+            });
+        }
+
         this.batchedGaze = this.batchedGaze.concat([data]);
 
         if (this.core.isSessionActive && this.batchedGaze.length >= this.core.config.gazeBatchSize) {
-            this.sendData();
+            this.sendData().catch((err) => console.warn('C3D: GazeTracker auto-flush failed', err));
         }
     }
 
@@ -79,12 +104,6 @@ class GazeTracker {
         this.playerSnapshotInterval = interval;
     }
 
-    /**
-     * @deprecated The `hmdtype` gaze-payload shadow channel was removed. HMD identity is now
-     * derived by the pipeline from the raw `c3d.device.xr.input_profiles` device signal. This
-     * method is retained as a no-op for backward compatibility and will be removed in a future
-     * major version.
-     */
     setHMDType(_hmdtype: string): void {
         console.warn('C3D: setHMDType() is deprecated and has no effect. HMD identity is derived from the raw c3d.device.xr.input_profiles device signal.');
     }
@@ -115,7 +134,8 @@ class GazeTracker {
                     } else {
                         reject(res);
                     }
-                });
+                })
+                .catch(err => reject(err));
             this.batchedGaze = [];
         });
     }

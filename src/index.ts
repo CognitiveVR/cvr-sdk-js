@@ -12,6 +12,9 @@ import ControllerTracker from './utils/ControllerTracker';
 import ControllerInputTracker from './utils/ControllerInputTracker';
 import FingerprintJS from '@fingerprintjs/fingerprintjs';
 import BoundaryTracker from './utils/BoundaryTracker';
+import RemoteVariables from './remotevariables';
+import RoomCapture from './roomcapture';
+import FixationTracker from './fixationtracker';
 import { Settings, SceneConfig } from './config';
 
 import {
@@ -60,8 +63,11 @@ class C3D {
   public dynamicObject: DynamicObject;
   public fpsTracker: FPSTracker;
   public adapterManagesFPS: boolean = false;
-  public renderer: any;    // Supports multiple engines (Three, Babylon, WLE) without shared interfaces
+  public renderer: any;
   public boundaryTracker: BoundaryTracker;
+  public remoteVariables: RemoteVariables;
+  public roomCapture: RoomCapture;
+  public fixation: FixationTracker;
   private deviceIdPromise: Promise<void> | null = null;
   private _gazeRaycaster: (() => GazeHitData | null) | null;
 
@@ -101,8 +107,14 @@ class C3D {
     this.exitpoll = new ExitPoll(this.core, this.customEvent);
     this.dynamicObject = new DynamicObject(this.core, this.customEvent);
     this.fpsTracker = new FPSTracker(); 
-    this.renderer = renderer; 
+    this.renderer = renderer;
     this.boundaryTracker = new BoundaryTracker(self);
+    this.remoteVariables = new RemoteVariables(this.core);
+    this.roomCapture = new RoomCapture(this.core);
+    this.fixation = new FixationTracker(this.core);
+    if (this.core.config.enableFixation !== false) {
+      this.gaze.setFixationSink(this.fixation);
+    }
 
     // Initialize FingerprintJS in the background
     if (isBrowser) {
@@ -246,7 +258,13 @@ class C3D {
     }
 
     if (xrSession) {  
-      this.xrSessionManager = new XRSessionManager(this.gaze, xrSession, this.dynamicObject, this.gazeRaycaster);
+      this.xrSessionManager = new XRSessionManager(
+        this.gaze,
+        xrSession,
+        this.dynamicObject,
+        this.gazeRaycaster,
+        this.core.config.enableRoomCapture !== false ? this.roomCapture : null,
+      );
       
       let sessionInfo = null;
       try {
@@ -332,6 +350,11 @@ class C3D {
     this.core.getSessionTimestamp();
     this.core.getSessionId();
     this.customEvent.send('Session Start', [0, 0, 0]);
+
+    if (this.core.config.autoFetchRemoteVariables === true) {
+      void this.remoteVariables.fetchVariables();
+    }
+
     return true;
   }
   
@@ -362,6 +385,10 @@ class C3D {
           this.xrSessionManager = null;
       }
       
+      if (this.fixation) {
+          this.fixation.finalize();
+      }
+
       const props: Record<string, any> = {};
       const endPos = [0, 0, 0];
       const sessionLength = this.core.getTimestamp() - (this.core.sessionTimestamp as number);
@@ -370,21 +397,31 @@ class C3D {
 
       this.customEvent.send('c3d.sessionEnd', endPos, props);
 
+      const teardown = () => {
+        this.core.setSessionTimestamp = 0;
+        this.core.setSessionId = '';
+        this.core.setSessionStatus = false;
+        this.core.resetNewUserDeviceProperties();
+
+        this.gaze.endSession();
+        this.customEvent.endSession();
+        this.sensor.endSession();
+        this.dynamicObject.endSession();
+        this.fixation.endSession();
+        this.roomCapture.endSession();
+        this.remoteVariables.endSession();
+      };
+
       this.sendData()
         .then(res => {
-          this.core.setSessionTimestamp = 0;
-          this.core.setSessionId = '';
-          this.core.setSessionStatus = false;
-          this.core.resetNewUserDeviceProperties();
-
-          this.gaze.endSession();
-          this.customEvent.endSession();
-          this.sensor.endSession();
-          this.dynamicObject.endSession();
-
+          teardown();
           resolve(res);
         })
-        .catch(err => reject(err));
+        .catch(err => {
+          teardown();
+          console.warn('C3D: endSession flush failed; the session was still ended locally.', err);
+          resolve('Cognitive3D::EndSession: flush failed, session ended locally');
+        });
     });
   }
 
@@ -424,7 +461,7 @@ class C3D {
   setScene(name: string): void {
     console.log(`CognitiveVRAnalytics::SetScene: ${name}`);
     if (this.core.sceneData.sceneId) {
-      this.sendData();
+      this.sendData().catch((err) => console.warn('C3D: C3D auto-flush failed', err));
       this.dynamicObject.refreshObjectManifest();
     }
 
@@ -451,14 +488,25 @@ class C3D {
         return;
       }
 
-      const custom = this.customEvent.sendData();
-      const gaze = this.gaze.sendData();
-      const sensor = this.sensor.sendData();
-      const dynamicObject = this.dynamicObject.sendData();
+      interface FlushResult { name: string; ok: boolean; error?: unknown; }
+      const settle = (name: string, p: Promise<unknown>): Promise<FlushResult> =>
+        p.then(() => ({ name, ok: true })).catch((error: unknown) => ({ name, ok: false, error }));
 
-      Promise.all([custom, gaze, sensor, dynamicObject])
-        .then(() => resolve(200))
-        .catch(err => reject(err));
+      Promise.all([
+        settle('customEvent', this.customEvent.sendData()),
+        settle('gaze', this.gaze.sendData()),
+        settle('sensor', this.sensor.sendData()),
+        settle('dynamicObject', this.dynamicObject.sendData()),
+        settle('fixation', this.fixation.sendData()),
+        settle('roomCapture', this.roomCapture.sendData()),
+      ]).then((results: FlushResult[]) => {
+        const failed = results.filter(r => !r.ok);
+        if (failed.length > 0) {
+          const detail = failed.map(r => `${r.name} (${String(r.error)})`).join(', ');
+          console.warn(`C3D: sendData: ${failed.length} of ${results.length} endpoints failed: ${detail}`);
+        }
+        resolve(200);
+      });
     });
   }
 

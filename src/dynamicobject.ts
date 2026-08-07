@@ -107,7 +107,7 @@ class DynamicObject {
     public allEngagements: { [objectId: string]: EngagementEvent[] };
     private engagementCounts: { [objectId: string]: { [name: string]: number } };
     public trackedObjects: Map<string, TrackedObjectEntry>;
-    private snapshotIndexMap: Map<string, number>; // Track indices of snapshots while session is inactive
+    private snapshotIndexMap: Map<string, number>;
 
     constructor(core: CognitiveVRAnalyticsCore, customEvent: CustomEvents) {
         this.core = core;
@@ -157,7 +157,7 @@ class DynamicObject {
         this.addSnapshot(customid, position, rotation, scale, props);
 
         if (this.core.isSessionActive && (this.snapshots.length + this.manifestEntries.length >= this.core.config.dynamicDataLimit)) {
-            this.sendData();
+            this.sendData().catch((err) => console.warn('C3D: DynamicObject auto-flush failed', err));
         }
         return customid;
     }
@@ -195,7 +195,7 @@ class DynamicObject {
                 }
                 this.addSnapshot(existing.id, position, rotation, scale, [{ "enabled": true }]);
                 if (this.core.isSessionActive && (this.snapshots.length + this.manifestEntries.length >= this.core.config.dynamicDataLimit)) {
-                    this.sendData();
+                    this.sendData().catch((err) => console.warn('C3D: DynamicObject auto-flush failed', err));
                 }
             }
             console.warn(`DynamicObject.registerObject: "${name}" + "${meshname}" already registered in this scene; returning existing id.`);
@@ -212,7 +212,7 @@ class DynamicObject {
         this.addSnapshot(newObjectId.id, position, rotation, scale, props);
 
         if (this.core.isSessionActive && (this.snapshots.length + this.manifestEntries.length >= this.core.config.dynamicDataLimit)) {
-            this.sendData();
+            this.sendData().catch((err) => console.warn('C3D: DynamicObject auto-flush failed', err));
         }
         return newObjectId.id;
     }
@@ -251,7 +251,7 @@ class DynamicObject {
                 // Safety check: ensure the snapshot at this index actually belongs to this ID
                 if (this.snapshots[index] && this.snapshots[index].id === objectId) {
                     this.snapshots[index] = snapshot;
-                    return; // Successfully updated in place, exit early
+                    return;
                 }
             }
             // If not found in map, or map was stale, store the new index for future overwrites
@@ -260,7 +260,7 @@ class DynamicObject {
         this.snapshots.push(snapshot);
 
         if (this.core.isSessionActive && (this.snapshots.length + this.manifestEntries.length >= this.core.config.dynamicDataLimit)) {
-            this.sendData();
+            this.sendData().catch((err) => console.warn('C3D: DynamicObject auto-flush failed', err));
         }
     }
 
@@ -316,7 +316,8 @@ class DynamicObject {
             this.jsonPart++;
 
             this.network.networkCall('dynamics', sendJson)
-                .then(res => (res === 200) ? resolve(200) : reject(res));
+                .then(res => (res === 200) ? resolve(200) : reject(res))
+                .catch(err => reject(err));
             
             this.manifestEntries = [];
             this.snapshots = [];
@@ -408,7 +409,7 @@ class DynamicObject {
         this.addSnapshot(customid, position, rotation, null, [{ enabled: true }]);
 
         if (this.core.isSessionActive && (this.snapshots.length + this.manifestEntries.length >= this.core.config.dynamicDataLimit)) {
-            this.sendData();
+            this.sendData().catch((err) => console.warn('C3D: DynamicObject auto-flush failed', err));
         }
         return customid;
     }
@@ -427,7 +428,7 @@ class DynamicObject {
         this.snapshots.push(snapshot);
 
         if (this.core.isSessionActive && (this.snapshots.length + this.manifestEntries.length >= this.core.config.dynamicDataLimit)) {
-            this.sendData();
+            this.sendData().catch((err) => console.warn('C3D: DynamicObject auto-flush failed', err));
         }
     }
 

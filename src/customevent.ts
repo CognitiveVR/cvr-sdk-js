@@ -48,7 +48,7 @@ class CustomEvents {
         this.batchedCustomEvents = this.batchedCustomEvents.concat([data]);
 
         if (this.core.isSessionActive && this.batchedCustomEvents.length >= this.core.config.customEventBatchSize) {
-            this.sendData();
+            this.sendData().catch((err) => console.warn('C3D: CustomEvent auto-flush failed', err));
         }
     }
 
@@ -71,7 +71,8 @@ class CustomEvents {
                 this.jsonPart++;
                 
                 this.network.networkCall('events', payload)
-                    .then(res => (res === 200) ? resolve(res as number) : reject(res));
+                    .then(res => (res === 200) ? resolve(res as number) : reject(res))
+                    .catch(err => reject(err));
                 
                 this.batchedCustomEvents = [];
             }

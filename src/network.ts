@@ -1,5 +1,6 @@
 import { fetch, isBrowser } from './utils/environment';
 import Core from './core';
+import type { RemoteVariableCollection } from './remotevariables';
 
 // Define the shape of the QuestionSet response
 export interface QuestionSet {
@@ -14,10 +15,6 @@ class Network {
         this.core = core;
     }
 
-    /**
-     * Check if network is available
-     * @returns {boolean} Whether network appears to be available
-     */
     isOnline(): boolean {
         // In browser, check navigator.onLine
         if (isBrowser && navigator && typeof navigator.onLine === 'boolean') {
@@ -27,12 +24,6 @@ class Network {
         return true;
     }
 
-    /**
-     * Make a network call to the Cognitive3D API
-     * @param suburl - API endpoint path
-     * @param content - Request payload
-     * @returns Promise resolving to response status or rejection
-     */
     networkCall(suburl: string, content: object): Promise<number | string> {
         return new Promise((resolve, reject) => {
             if (!this.core.sceneData.sceneId || !this.core.sceneData.versionNumber) {
@@ -88,10 +79,6 @@ class Network {
         });
     }
 
-    /**
-     * Get a question set from the Cognitive3D API
-     * @param hook - Question set hook
-     */
     networkExitpollGet(hook: string): Promise<QuestionSet> {
         return new Promise((resolve, reject) => {
             const path = `https://${this.core.config.networkHost}/v${this.core.config.networkVersion}/questionSetHooks/${hook}/questionSet`;
@@ -113,12 +100,6 @@ class Network {
         });
     }
 
-    /**
-     * Send question set responses to the Cognitive3D API
-     * @param questionsetname - Name of the question set
-     * @param questionsetversion - Version of the question set
-     * @param content - Response payload
-     */
     networkExitpollPost(questionsetname: string, questionsetversion: string, content: object): Promise<number> {
         return new Promise((resolve, reject) => {
             const options = {
@@ -139,6 +120,34 @@ class Network {
                     console.error('Error posting exit poll:', err);
                     reject(err);
                 });
+        });
+    }
+
+    networkRemoteVariablesGet(identifier: string): Promise<RemoteVariableCollection> {
+        return new Promise((resolve, reject) => {
+            const path = `https://${this.core.config.networkHost}/v${this.core.config.networkVersion}/remotevariables?identifier=${encodeURIComponent(identifier)}`;
+
+            if (this.core.config.LOG) {
+                console.log(`Network.networkRemoteVariablesGet: ${path}`);
+            }
+
+            const options = {
+                method: 'get',
+                headers: {
+                    'Authorization': `APIKEY:DATA ${this.core.config.APIKey}`,
+                    'Content-Type': 'application/json'
+                }
+            };
+
+            fetch(path, options)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`remote variables request failed: HTTP ${response.status}`);
+                    }
+                    return response.json() as Promise<RemoteVariableCollection>;
+                })
+                .then(payload => resolve(payload))
+                .catch(err => reject(err));
         });
     }
 }

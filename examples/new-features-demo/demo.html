@@ -1,0 +1,671 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>C3D WebXR — New Features Demo</title>
+  <style>
+    :root { color-scheme: dark; }
+    html, body { margin: 0; height: 100%; background: #0b0f17; color: #e6edf3; font: 14px/1.5 system-ui, sans-serif; }
+    #overlay {
+      position: fixed; inset: 0 auto auto 0; max-width: 340px; margin: 12px;
+      padding: 14px 16px; background: rgba(14, 20, 32, 0.86); border: 1px solid #223; border-radius: 12px;
+      backdrop-filter: blur(6px); z-index: 10;
+    }
+    h1 { font-size: 15px; margin: 0 0 8px; }
+    button {
+      font: inherit; color: #0b0f17; background: #58a6ff; border: 0; border-radius: 8px;
+      padding: 8px 14px; margin: 4px 6px 4px 0; cursor: pointer; font-weight: 600;
+    }
+    button:disabled { opacity: 0.5; cursor: default; }
+    button.secondary { background: #30363d; color: #e6edf3; }
+    #status { margin: 8px 0; color: #9fb0c3; }
+    table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+    td { padding: 2px 0; vertical-align: top; }
+    td.k { color: #9fb0c3; padding-right: 10px; white-space: nowrap; }
+    td.v { color: #e6edf3; font-variant-numeric: tabular-nums; }
+    #remoteVars { margin-top: 8px; border-top: 1px solid #223; padding-top: 8px; }
+    #remoteVars .rv { color: #7ee787; }
+    .hint { color: #9fb0c3; font-size: 12px; margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <div id="overlay">
+    <h1>C3D WebXR — New Features Demo</h1>
+    <div id="status">Loading…</div>
+    <div>
+      <button id="enterARBtn" disabled>Enter AR</button>
+      <button id="enterVRBtn" disabled>Enter VR</button>
+      <button id="exitBtn" class="secondary" disabled>Exit</button>
+    </div>
+    <table>
+      <tr><td class="k">Session</td><td class="v" id="mSession">inactive</td></tr>
+      <tr><td class="k">Mode</td><td class="v" id="mMode">n/a</td></tr>
+      <tr><td class="k">Gaze source</td><td class="v" id="mGazeSrc">n/a</td></tr>
+      <tr><td class="k">Planes detected</td><td class="v" id="mPlanes">0</td></tr>
+      <tr><td class="k">Meshes detected</td><td class="v" id="mMeshes">0</td></tr>
+      <tr><td class="k">Gaze samples (buffered)</td><td class="v" id="mGaze">0</td></tr>
+      <tr><td class="k">Room data sent</td><td class="v" id="mRoom">0</td></tr>
+      <tr><td class="k">Fixations sent</td><td class="v" id="mFix">0</td></tr>
+    </table>
+    <div id="remoteVars"><strong>Remote variables</strong><div id="rvList" class="hint">not fetched yet</div></div>
+    <div>
+      <button id="exportSceneBtn" class="secondary">Export scene</button>
+      <button id="exportCubeBtn" class="secondary">Export cube</button>
+    </div>
+    <div id="exportStatus" class="hint"></div>
+    <div class="hint">
+      Look steadily at the blue cube to generate fixations. Move around your room so the
+      headset detects planes/meshes. Plane/mesh detection works in AR and (on Quest) VR.
+    </div>
+  </div>
+  <script src="config.js"></script>
+  <script src="../../lib/c3d.umd.js"></script>
+  <script type="importmap">
+  { "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  } }
+  </script>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
+
+    const overlay = document.getElementById('overlay');
+    const statusEl = document.getElementById('status');
+    const enterARBtn = document.getElementById('enterARBtn');
+    const enterVRBtn = document.getElementById('enterVRBtn');
+    const exitBtn = document.getElementById('exitBtn');
+    const el = (id) => document.getElementById(id);
+
+    const cfg = window.C3D_DEMO_CONFIG;
+    const C3D = window.C3D;
+
+    let planesCount = 0, meshesCount = 0, roomDataTotal = 0, fixationsTotal = 0;
+    let c3d = null, currentMode = 'n/a';
+
+    const setStatus = (msg) => { statusEl.textContent = msg; };
+
+    if (!cfg || !cfg.apiKey || cfg.apiKey.startsWith('YOUR_')) {
+      setStatus('Not configured. Copy config.example.js to config.js and fill in your API key + scene.');
+    } else if (typeof C3D === 'undefined') {
+      setStatus('window.C3D missing. Run `npm run build` from the repo root so ../../lib/c3d.umd.js exists.');
+    } else if (!navigator.xr) {
+      setStatus('WebXR not available in this browser. Open on a headset browser (e.g. Quest Browser).');
+    } else {
+      Promise.all([
+        navigator.xr.isSessionSupported('immersive-ar').catch(() => false),
+        navigator.xr.isSessionSupported('immersive-vr').catch(() => false),
+      ]).then(([ar, vr]) => {
+        enterARBtn.disabled = !ar;
+        enterVRBtn.disabled = !vr;
+        const modes = [ar ? 'AR' : null, vr ? 'VR' : null].filter(Boolean).join(' / ');
+        setStatus(modes ? ('Supported: ' + modes + '. Put on your headset and pick a mode.') : 'No immersive XR mode supported on this device.');
+      });
+    }
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.xr.enabled = true;
+    document.body.appendChild(renderer.domElement);
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 100);
+
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x445566, 1.1));
+    const dirLight = new THREE.DirectionalLight(0xffffff, 1.0);
+    dirLight.position.set(0.5, 1, 0.25);
+    scene.add(dirLight);
+
+    const FALLBACK_EYE_HEIGHT = 1.6;
+    const room = new THREE.Group();
+    let floorCalibrated = false;
+    scene.add(room);
+
+    const grid = new THREE.GridHelper(6, 12, 0x335577, 0x223344);
+    grid.position.y = 0;
+    grid.userData.isDynamic = true;
+    room.add(grid);
+
+    const shellMat = new THREE.MeshStandardMaterial({ color: 0x2a3340, roughness: 0.95, metalness: 0.0 });
+
+    const floor = new THREE.Mesh(new THREE.BoxGeometry(6, 0.05, 6), shellMat);
+    floor.position.set(0, -0.025, 0);
+    room.add(floor);
+
+    const backWall = new THREE.Mesh(new THREE.BoxGeometry(6, 2.5, 0.05), shellMat);
+    backWall.position.set(0, 1.25, -3);
+    room.add(backWall);
+
+    const sideWall = new THREE.Mesh(new THREE.BoxGeometry(0.05, 2.5, 6), shellMat);
+    sideWall.position.set(-3, 1.25, 0);
+    room.add(sideWall);
+
+    const plinth = new THREE.Mesh(
+      new THREE.BoxGeometry(0.5, 1.0, 0.5),
+      new THREE.MeshStandardMaterial({ color: 0x3a4657, roughness: 0.8, metalness: 0.0 }),
+    );
+    plinth.position.set(0, 0.5, -1.5);
+    room.add(plinth);
+
+    const frontWall = new THREE.Mesh(new THREE.BoxGeometry(6, 2.5, 0.05), shellMat);
+    frontWall.position.set(0, 1.25, 3);
+    room.add(frontWall);
+
+    const rightWall = new THREE.Mesh(
+      new THREE.BoxGeometry(0.05, 2.5, 6),
+      new THREE.MeshStandardMaterial({ color: 0x3d3350, roughness: 0.95, metalness: 0.0 }),
+    );
+    rightWall.position.set(3, 1.25, 0);
+    room.add(rightWall);
+
+    const ceiling = new THREE.Mesh(new THREE.BoxGeometry(6, 0.05, 6), shellMat);
+    ceiling.position.set(0, 2.5, 0);
+    room.add(ceiling);
+
+    const gazeTargets = [floor, backWall, sideWall, frontWall, rightWall, ceiling, plinth];
+
+    const cube = new THREE.Mesh(
+      new THREE.BoxGeometry(0.3, 0.3, 0.3),
+      new THREE.MeshStandardMaterial({ color: 0x3b82f6, roughness: 0.4, metalness: 0.1 }),
+    );
+    cube.position.set(0, 1.2, -1.5);
+    room.add(cube);
+    gazeTargets.push(cube);
+
+    function isCube(obj) {
+      let cur = obj;
+      while (cur) {
+        if (cur === cube) return true;
+        cur = cur.parent;
+      }
+      return false;
+    }
+
+    const _worldPos = new THREE.Vector3();
+    function cubeC3DPosition() {
+      cube.getWorldPosition(_worldPos);
+      return [_worldPos.x, _worldPos.y, -_worldPos.z];
+    }
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    const raycaster = new THREE.Raycaster();
+    const _origin = new THREE.Vector3();
+    const _quat = new THREE.Quaternion();
+    const _dir = new THREE.Vector3();
+    const _eyeOrigin = new THREE.Vector3();
+    const _eyeDir = new THREE.Vector3();
+    const _localHit = new THREE.Vector3();
+    const _objPos = new THREE.Vector3();
+    const _objQuat = new THREE.Quaternion();
+    const _missPoint = new THREE.Vector3();
+    const GAZE_MISS_DISTANCE = Math.min(100, camera.far);
+    let eyeGazeFresh = false;
+    let gazeSource = 'head';
+
+    function sampleEyeGaze(frame) {
+      eyeGazeFresh = false;
+      const session = renderer.xr.getSession();
+      const refSpace = renderer.xr.getReferenceSpace();
+      if (!frame || !session || !refSpace || !session.inputSources) return;
+      for (const src of session.inputSources) {
+        if (src.targetRayMode !== 'gaze' || !src.targetRaySpace) continue;
+        const pose = frame.getPose(src.targetRaySpace, refSpace);
+        if (!pose) continue;
+        const p = pose.transform.position;
+        const o = pose.transform.orientation;
+        _eyeOrigin.set(p.x, p.y, p.z);
+        _quat.set(o.x, o.y, o.z, o.w);
+        _eyeDir.set(0, 0, -1).applyQuaternion(_quat);
+        eyeGazeFresh = true;
+        return;
+      }
+    }
+
+    function gazeRaycaster() {
+      if (eyeGazeFresh) {
+        gazeSource = 'eye';
+        raycaster.set(_eyeOrigin, _eyeDir);
+      } else {
+        gazeSource = 'head';
+        const cam = renderer.xr.isPresenting ? renderer.xr.getCamera() : camera;
+        cam.getWorldPosition(_origin);
+        cam.getWorldQuaternion(_quat);
+        _dir.set(0, 0, -1).applyQuaternion(_quat);
+        raycaster.set(_origin, _dir);
+      }
+      const hits = raycaster.intersectObjects(gazeTargets, true);
+      if (hits.length > 0 && !isCube(hits[0].object)) {
+        const w = hits[0].point;
+        return { point: [w.x, w.y, -w.z] };
+      }
+      if (hits.length > 0 && !cube.userData.c3dId) {
+        const w = hits[0].point;
+        return { point: [w.x, w.y, -w.z] };
+      }
+      if (hits.length > 0) {
+        const p = hits[0].point;
+        _localHit.copy(p);
+        cube.worldToLocal(_localHit);
+        cube.getWorldPosition(_objPos);
+        cube.getWorldQuaternion(_objQuat);
+        return {
+          objectId: cube.userData.c3dId,
+          point: [_localHit.x, _localHit.y, -_localHit.z],
+          worldPoint: [p.x, p.y, -p.z],
+          objectPosition: [_objPos.x, _objPos.y, -_objPos.z],
+          objectRotation: [_objQuat.x, _objQuat.y, -_objQuat.z, -_objQuat.w],
+        };
+      }
+      const ray = raycaster.ray;
+      const far = ray.at(GAZE_MISS_DISTANCE, _missPoint);
+      return { point: [far.x, far.y, -far.z] };
+    }
+
+    function instrument(mod, onSend) {
+      try {
+        const net = mod && mod.network;
+        if (net && typeof net.networkCall === 'function') {
+          const orig = net.networkCall.bind(net);
+          net.networkCall = (url, payload) => { try { onSend(payload); } catch (e) {  } return orig(url, payload); };
+        }
+      } catch (e) {  }
+    }
+
+    let cubeObjectId = 'demo-cube';
+
+    const CUBE_MESH_NAME = new URLSearchParams(location.search).get('mesh') || 'cube';
+
+    const DBG = 'c3d_debug.';
+    const MAX_ANCHOR_EVENTS = 50;
+    const r3 = (n) => (typeof n === 'number' ? Math.round(n * 1000) / 1000 : n);
+    const vec = (a) => (Array.isArray(a) ? '[' + a.map(r3).join(', ') + ']' : 'none');
+
+    function emit(name, props) {
+      if (!c3d || !c3d.isSessionActive()) return;
+      try {
+        c3d.customEvent.send(DBG + name, [0, 0, 0], props);
+      } catch (e) {
+        console.warn('[demo] debug event failed:', name, e);
+      }
+    }
+
+    const seenAnchorIds = new Set();
+    let anchorEventsEmitted = 0;
+    function onRoomCaptureSent(p) {
+      if (!p) return;
+      const manifest = p.roomManifest || [];
+      const data = p.roomData || [];
+      roomDataTotal += data.length;
+
+      const byId = {};
+      for (const d of data) byId[d.id] = d;
+
+      for (const room of manifest) {
+        for (const a of (room.anchors || [])) {
+          if (seenAnchorIds.has(a.id)) continue;
+          seenAnchorIds.add(a.id);
+          if (anchorEventsEmitted >= MAX_ANCHOR_EVENTS) continue;
+          anchorEventsEmitted++;
+          const d = byId[a.id] || {};
+          emit('anchor_detected', {
+            anchor_id: a.id,
+            label: a.label || 'unknown',
+            shape: a.shape || 'unknown',
+            position: vec(d.p),
+            rotation: vec(d.r),
+            size_m: vec(d.s),
+            is_plane: a.shape === 'plane',
+          });
+        }
+      }
+
+      const newAnchors = manifest.reduce((n, rm) => n + ((rm.anchors || []).length), 0);
+      const labels = [];
+      for (const room of manifest) {
+        for (const a of (room.anchors || [])) {
+          if (labels.indexOf(a.label) === -1) labels.push(a.label);
+        }
+      }
+      emit('room_capture_sent', {
+        part: p.part | 0,
+        new_anchors: newAnchors,
+        room_data_entries: data.length,
+        removals: data.filter((d) => d.enabled === false).length,
+        new_labels: labels.join(',') || 'none',
+        total_anchors_seen: seenAnchorIds.size,
+        planes_visible_now: planesCount,
+        meshes_visible_now: meshesCount,
+      });
+    }
+
+    function onFixationsSent(p) {
+      const data = (p && p.data) || [];
+      fixationsTotal += data.length;
+      const f = data[0];
+      emit('fixations_sent', {
+        part: (p && p.part) | 0,
+        count: data.length,
+        gaze_source: gazeSource === 'eye' ? 'eye_tracking' : 'head_direction',
+        sample_duration_ms: f ? Math.round(f.duration) : 0,
+        sample_maxradius_cm: f ? Math.round(f.maxradius * 100) : 0,
+        sample_target: f ? (f.objectid || 'world') : 'none',
+        sample_position: f ? vec(f.p) : 'none',
+        sample_space: f && f.objectid ? 'object_local' : 'world',
+      });
+    }
+
+    function onDynamicsSent(p) {
+      if (!p) return;
+      const manifest = p.manifest || {};
+      const ids = Object.keys(manifest);
+      const snapshots = p.data || [];
+      const first = snapshots[0];
+      emit('dynamics_sent', {
+        part: p.part | 0,
+        manifest_entries: ids.length,
+        snapshots: snapshots.length,
+        object_ids: ids.join(',') || 'none',
+        mesh_names: ids.map((id) => manifest[id].mesh).join(',') || 'none',
+        file_types: ids.map((id) => manifest[id].fileType).join(',') || 'none',
+        sample_position: first ? vec(first.p) : 'none',
+        sample_rotation: first ? vec(first.r) : 'none',
+        session_id_present: Boolean(p.sessionid),
+      });
+    }
+
+    function onRemoteVariables() {
+      renderRemoteVars();
+      const vars = c3d.remoteVariables.listAllVariables();
+      const props = {
+        count: vars.length,
+        names: vars.map((v) => v.remoteVariableName).join(',') || 'none',
+        types: vars.map((v) => v.type).join(',') || 'none',
+      };
+      for (const v of vars) {
+        const fallback = v.type === 'boolean' ? false : (v.type === 'int' ? 0 : '');
+        props['var_' + v.remoteVariableName] =
+          c3d.remoteVariables.getValue(v.remoteVariableName, fallback);
+      }
+      emit('remote_variables_fetched', props);
+    }
+
+    let grantedFeatures = '';
+    let eyeTrackingGranted = false;
+    let lastReportedGazeSource = null;
+    const gazeLabel = (s) => (s === 'eye' ? 'eye_tracking' : (s === 'head' ? 'head_direction' : 'none'));
+
+    function reportGazeSource() {
+      if (gazeSource === lastReportedGazeSource) return;
+      const previous = lastReportedGazeSource;
+      lastReportedGazeSource = gazeSource;
+      emit('gaze_source_changed', {
+        source: gazeLabel(gazeSource),
+        previous: gazeLabel(previous),
+        eye_tracking_granted: eyeTrackingGranted,
+        granted_features: grantedFeatures || 'not reported',
+      });
+    }
+
+    function renderRemoteVars() {
+      if (!c3d) return;
+      const vars = c3d.remoteVariables.listAllVariables();
+      const list = el('rvList');
+      if (!vars.length) { list.innerHTML = 'fetched: none defined for this participant'; return; }
+      list.innerHTML = vars.map((v) => {
+        const fallback = v.type === 'boolean' ? false : (v.type === 'int' ? 0 : '');
+        const val = c3d.remoteVariables.getValue(v.remoteVariableName, fallback);
+        return '<div><span class="rv">' + v.remoteVariableName + '</span> '
+          + '<span class="hint">(' + (v.type || 'string') + ')</span> = ' + String(val) + '</div>';
+      }).join('');
+    }
+
+    async function startC3D(session, mode) {
+      c3d = new C3D({
+        config: {
+          APIKey: cfg.apiKey,
+          networkHost: cfg.networkHost,
+          allSceneData: [cfg.scene],
+          gazeTrackingSource: 'webxr',
+          autoFetchRemoteVariables: true,
+          fixationDataLimit: 5,
+          roomDataLimit: 8,
+          dynamicDataLimit: 64,
+        },
+      });
+      c3d.setScene(cfg.scene.sceneName);
+      c3d.setDeviceProperty('AppName', 'C3D New-Features Demo');
+      c3d.setDeviceProperty('AppEngine', 'Three.js');
+      c3d.setDeviceProperty('AppEngineVersion', String(THREE.REVISION));
+      c3d.setUserProperty('c3d.app.version', '1.0');
+      c3d.setParticipantId('new-features-demo-user');
+
+      c3d.gazeRaycaster = gazeRaycaster;
+
+      instrument(c3d.roomCapture, onRoomCaptureSent);
+      instrument(c3d.fixation, onFixationsSent);
+      instrument(c3d.dynamicObject, onDynamicsSent);
+      c3d.remoteVariables.onRemoteVariablesAvailable(onRemoteVariables);
+
+      await c3d.startSession(session);
+      currentMode = mode === 'immersive-ar' ? 'AR' : 'VR';
+
+      const granted = session.enabledFeatures ? Array.from(session.enabledFeatures) : [];
+      grantedFeatures = granted.join(',');
+      eyeTrackingGranted = granted.indexOf('eye-tracking') !== -1;
+      emit('xr_session_started', {
+        mode: currentMode,
+        granted_features: grantedFeatures || 'not reported by runtime',
+        eye_tracking_granted: eyeTrackingGranted,
+        plane_detection_granted: granted.indexOf('plane-detection') !== -1,
+        mesh_detection_granted: granted.indexOf('mesh-detection') !== -1,
+        scene_name: cfg.scene.sceneName,
+        scene_version: String(cfg.scene.versionNumber),
+        scene_id: String(cfg.scene.sceneId),
+        cube_mesh_name: CUBE_MESH_NAME,
+      });
+
+      if (cfg.cubeObjectId) {
+        cubeObjectId = cfg.cubeObjectId;
+        c3d.dynamicObject.registerObjectCustomId('DemoCube', CUBE_MESH_NAME, cubeObjectId,
+          cubeC3DPosition(), [0, 0, 0, 1]);
+      } else {
+        cubeObjectId = c3d.dynamicObject.registerObject('DemoCube', CUBE_MESH_NAME,
+          cubeC3DPosition(), [0, 0, 0, 1]);
+        console.warn('[demo] no cubeObjectId in config.js; the dynamic object will not '
+          + 'resolve against the dashboard. Add the UUID shown for the uploaded object.');
+      }
+      cube.userData.c3dId = cubeObjectId;
+
+      c3d.dynamicObject.sendData()
+        .catch((err) => console.warn('[demo] dynamic object flush failed', err));
+      setStatus('Session active (' + currentMode + '). Look at the cube; walk around to detect planes.');
+    }
+
+    async function enterXR(mode) {
+      try {
+        enterARBtn.disabled = true;
+        enterVRBtn.disabled = true;
+        const sessionInit = mode === 'immersive-ar'
+          ? {
+              optionalFeatures: ['plane-detection', 'mesh-detection', 'hit-test',
+                'local-floor', 'eye-tracking', 'dom-overlay'],
+              domOverlay: { root: overlay },
+            }
+          : {
+              optionalFeatures: ['plane-detection', 'mesh-detection', 'local-floor',
+                'bounded-floor', 'eye-tracking', 'hand-tracking'],
+            };
+        const session = await navigator.xr.requestSession(mode, sessionInit);
+        renderer.xr.setReferenceSpaceType('local-floor');
+        floorCalibrated = false;
+        room.position.y = 0;
+        await renderer.xr.setSession(session);
+        session.addEventListener('end', onSessionEnd);
+        await startC3D(session, mode);
+        exitBtn.disabled = false;
+        renderer.setAnimationLoop(onFrame);
+      } catch (err) {
+        console.error('Enter XR failed:', err);
+        setStatus('Enter XR failed: ' + (err && err.message ? err.message : err));
+        enterARBtn.disabled = false;
+        enterVRBtn.disabled = false;
+      }
+    }
+
+    async function onSessionEnd() {
+      renderer.setAnimationLoop(null);
+      exitBtn.disabled = true;
+      enterARBtn.disabled = false;
+      enterVRBtn.disabled = false;
+      try { if (c3d && c3d.isSessionActive()) await c3d.endSession(); } catch (e) { console.warn(e); }
+      currentMode = 'n/a';
+      updateOverlay();
+      setStatus('Session ended. Data flushed to the dashboard.');
+    }
+
+    let lastOverlay = 0;
+    function updateOverlay() {
+      const live = Boolean(c3d && c3d.isSessionActive());
+      el('mSession').textContent = live ? 'active' : 'inactive';
+      el('mMode').textContent = currentMode;
+      el('mGazeSrc').textContent = live
+        ? (gazeSource === 'eye' ? 'eye tracking' : 'head direction')
+        : 'n/a';
+      el('mPlanes').textContent = String(planesCount);
+      el('mMeshes').textContent = String(meshesCount);
+      el('mGaze').textContent = c3d && c3d.gaze ? String(c3d.gaze.batchedGaze.length) : '0';
+      el('mRoom').textContent = String(roomDataTotal);
+      el('mFix').textContent = String(fixationsTotal);
+    }
+
+    let adapterPromise = null;
+    function loadAdapter() {
+      if (adapterPromise) return adapterPromise;
+      adapterPromise = new Promise((resolve, reject) => {
+        window.THREE = Object.assign({}, THREE, { GLTFExporter });
+        const s = document.createElement('script');
+        s.src = '../../lib/c3d-bundle-threejs.umd.js';
+        s.onload = () => {
+          const Adapter = window.C3D && window.C3D.Adapter;
+          if (!Adapter) {
+            reject(new Error('adapter bundle loaded but exposed no Adapter'));
+            return;
+          }
+          resolve(new Adapter(instanceForExport()));
+        };
+        s.onerror = () => reject(new Error('could not load ../../lib/c3d-bundle-threejs.umd.js (run `npm run build`)'));
+        document.head.appendChild(s);
+      });
+      return adapterPromise;
+    }
+
+    let exportOnlyC3D = null;
+    function instanceForExport() {
+      if (c3d) return c3d;
+      if (!exportOnlyC3D) {
+        exportOnlyC3D = new C3D({
+          config: { APIKey: cfg.apiKey, networkHost: cfg.networkHost, allSceneData: [cfg.scene] },
+        });
+      }
+      return exportOnlyC3D;
+    }
+
+    async function runExport(what) {
+      try {
+        setExportStatus(`Exporting ${what}…  Pick a folder if prompted, otherwise a .zip downloads.`);
+        const adapter = await loadAdapter();
+        renderer.render(scene, camera);
+        if (what === 'scene') {
+          adapter.exportScene(scene, cfg.scene.sceneName, renderer, camera);
+        } else {
+          await adapter.exportObject(cube, 'cube', renderer, camera);
+        }
+        setExportStatus(`Export of ${what} started. Check the chosen folder or your downloads.`);
+      } catch (err) {
+        console.error('[demo] export failed', err);
+        setExportStatus(`Export failed: ${err.message}`);
+      }
+    }
+
+    function setExportStatus(text) {
+      const node = el('exportStatus');
+      if (node) node.textContent = text;
+    }
+
+    el('exportSceneBtn').addEventListener('click', () => runExport('scene'));
+    el('exportCubeBtn').addEventListener('click', () => runExport('cube'));
+
+    window.addEventListener('pagehide', () => {
+      if (c3d && c3d.isSessionActive()) {
+        void c3d.endSession();
+      }
+    });
+
+    function calibrateFloor(frame) {
+      if (floorCalibrated || !frame || !renderer.xr.isPresenting) return;
+      const refSpace = renderer.xr.getReferenceSpace();
+      if (!refSpace) return;
+      const pose = frame.getViewerPose(refSpace);
+      if (!pose) return;
+      floorCalibrated = true;
+      if (pose.transform.position.y < 0.5) {
+        room.position.y = -FALLBACK_EYE_HEIGHT;
+        console.log('[demo] Head-relative reference space; room offset to floor.');
+        if (c3d && c3d.isSessionActive()) {
+          c3d.dynamicObject.addSnapshot(cubeObjectId, cubeC3DPosition(), [0, 0, 0, 1]);
+        }
+      }
+    }
+
+    let frameGeometryUnsupported = false;
+    function readGeometryCounts(frame) {
+      if (frameGeometryUnsupported) return;
+      try {
+        planesCount = frame.detectedPlanes ? frame.detectedPlanes.size : 0;
+        meshesCount = frame.detectedMeshes ? frame.detectedMeshes.size : 0;
+      } catch (e) {
+        frameGeometryUnsupported = true;
+        planesCount = 0;
+        meshesCount = 0;
+      }
+    }
+
+    const CUBE_SNAPSHOT_INTERVAL_MS = 1000;
+    let lastCubeSnapshotMs = -Infinity;
+    function maybeSnapshotCube(time) {
+      if (!c3d || !c3d.isSessionActive()) return;
+      if (time - lastCubeSnapshotMs < CUBE_SNAPSHOT_INTERVAL_MS) return;
+      lastCubeSnapshotMs = time;
+      try {
+        c3d.dynamicObject.addSnapshot(cubeObjectId, cubeC3DPosition(), [0, 0, 0, 1]);
+      } catch (e) {
+        console.warn('[demo] cube snapshot failed', e);
+      }
+    }
+
+    function onFrame(time, frame) {
+      if (frame) {
+        readGeometryCounts(frame);
+        calibrateFloor(frame);
+        sampleEyeGaze(frame);
+        reportGazeSource();
+      }
+      maybeSnapshotCube(time);
+      renderer.render(scene, camera);
+      if (time - lastOverlay > 250) { lastOverlay = time; updateOverlay(); }
+    }
+
+    enterARBtn.addEventListener('click', () => enterXR('immersive-ar'));
+    enterVRBtn.addEventListener('click', () => enterXR('immersive-vr'));
+    exitBtn.addEventListener('click', () => { const s = renderer.xr.getSession(); if (s) s.end(); });
+  </script>
+</body>
+</html>

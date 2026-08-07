@@ -53,7 +53,7 @@ class C3DThreeAdapter {
     private _tempVec = new THREE.Vector3();
     private _tempQuat = new THREE.Quaternion();
     private _tempScale = new THREE.Vector3();
-    private _tempForward = new THREE.Vector3(0, 0, -1); // Forward vector
+    private _tempForward = new THREE.Vector3(0, 0, -1);
     private _gazeRaycaster = new THREE.Raycaster();
     private _gazeOriginNDC = new THREE.Vector2(0, 0);
 
@@ -62,6 +62,9 @@ class C3DThreeAdapter {
     // clobber each other.
     private _originPosTemp = new THREE.Vector3();
     private _originQuatTemp = new THREE.Quaternion();
+    private _identityQuatTemp = new THREE.Quaternion();
+    private _objPosTemp = new THREE.Vector3();
+    private _objQuatTemp = new THREE.Quaternion();
     private _originScaleTemp = new THREE.Vector3();
     private _originInverseQuatTemp = new THREE.Quaternion();
 
@@ -173,13 +176,24 @@ class C3DThreeAdapter {
         this._lastHitTimestamp = performance.now();
         this._hasLastHit = true;
 
-        const worldPoint = intersection.point.clone();
-        trackedRoot.worldToLocal(worldPoint);
-        worldPoint.z *= -1;
+        const localPoint = intersection.point.clone();
+        trackedRoot.worldToLocal(localPoint);
+        localPoint.z *= -1;
+
+        const hitWorld = intersection.point.clone();
+        const hitQuat = this._identityQuatTemp.identity();
+        this._applyAnalyticsOriginTransform(hitWorld, hitQuat);
+
+        const objWorldPos = trackedRoot.getWorldPosition(this._objPosTemp).clone();
+        const objWorldQuat = trackedRoot.getWorldQuaternion(this._objQuatTemp).clone();
+        this._applyAnalyticsOriginTransform(objWorldPos, objWorldQuat);
 
         return {
             objectId: trackedRoot.userData.c3dId,
-            point: [worldPoint.x, worldPoint.y, worldPoint.z]
+            point: [localPoint.x, localPoint.y, localPoint.z],
+            worldPoint: [hitWorld.x, hitWorld.y, -hitWorld.z],
+            objectPosition: [objWorldPos.x, objWorldPos.y, -objWorldPos.z],
+            objectRotation: [objWorldQuat.x, objWorldQuat.y, -objWorldQuat.z, -objWorldQuat.w]
         };
     }
 
@@ -224,15 +238,6 @@ class C3DThreeAdapter {
         this.c3d.gaze.recordGaze(correctedPosition, correctedOrientation, correctedGaze);
     }
 
-    /**
-     * Set the analytics origin. When non-null, camera and dynamic-object poses
-     * are recorded in this origin's local frame instead of world space. Pass
-     * null to clear and revert to raw world-space recording.
-     *
-     * In Mattercraft WebAR the natural origin is the scene's top-level Group
-     * (or the active Zappar anchor), so the scene-root translation does not
-     * appear as a constant offset in the recorded camera path.
-     */
     public setAnalyticsOrigin(origin: THREE.Object3D | null): void {
         this._analyticsOrigin = origin;
     }
@@ -241,12 +246,6 @@ class C3DThreeAdapter {
         return this._analyticsOrigin;
     }
 
-    /**
-     * Transform a world-space pose into the analytics origin's local frame in-place.
-     * Mutates the supplied position and quaternion. No-op when no origin is set.
-     * Scale is intentionally ignored (assumes the origin has identity scale,
-     * which is the common case for scene roots).
-     */
     private _applyAnalyticsOriginTransform(position: THREE.Vector3, quaternion: THREE.Quaternion): void {
         if (!this._analyticsOrigin) return;
 
@@ -264,12 +263,6 @@ class C3DThreeAdapter {
         quaternion.premultiply(this._originInverseQuatTemp);
     }
 
-    /**
-     * Public version of the analytics-origin transform helper. Lets the
-     * Mattercraft integration record one-shot snapshots (e.g. dynamic object
-     * initial registration) using the same coordinate frame as the per-frame
-     * pose stream.
-     */
     public transformWorldToAnalyticsOrigin(position: THREE.Vector3, quaternion: THREE.Quaternion): void {
         this._applyAnalyticsOriginTransform(position, quaternion);
     }
@@ -294,10 +287,6 @@ class C3DThreeAdapter {
         });
     }
 
-    /**
-     * Initializes the tracking systems (Gaze, Dynamic Objects, FPS).
-     * You MUST call c3dAdapter.update() in your own render loop.
-     */
     public startTracking(
         renderer: THREE.WebGLRenderer, 
         camera: THREE.Camera, 
@@ -351,9 +340,6 @@ class C3DThreeAdapter {
         console.log('Cognitive3D: Adapter initialized. Please ensure you call c3dAdapter.update() within your render loop.');
     }
 
-    /**
-     * MUST be called once per frame in your developer render loop.
-     */
     public update(timestamp?: number, frame?: XRFrame): void {
         if (!this.c3d.core.isSessionActive) return;
 
@@ -377,7 +363,7 @@ class C3DThreeAdapter {
 
     private _updateFPS(): void {
         const now = performance.now();
-        let delta = (now - this._fpsState.lastTime) / 1000; // delta in seconds
+        let delta = (now - this._fpsState.lastTime) / 1000;
 
         if (delta > 1.0) delta = 0;
 
@@ -473,29 +459,6 @@ class C3DThreeAdapter {
         this.c3d.gaze.recordGaze(correctedPosition, correctedOrientation, gazePayload);
     }
 
-    /**
-     * Build a world-space point to send as the fallback gaze endpoint for the
-     * dashboard, expressed in the analytics origin's frame with the standard
-     * C3D Z-flip applied.
-     *
-     * Two modes:
-     *   1. Recent real hit (within LAST_HIT_GRACE_MS) — re-use the cached
-     *      world hit point. Keeps the beam parked on the same world location
-     *      during transient raycast misses caused by tracking jitter.
-     *   2. No recent hit — synthesize a forward-looking point at
-     *      FALLBACK_GAZE_DISTANCE m in the camera's forward direction.
-     *
-     * The returned array has no `objectId` partner — it is intended to be sent
-     * as `{ objectId: "", point }`, which the SDK serializes as a `g` payload
-     * with no `o`, i.e. a world-space gaze endpoint. The dashboard treats
-     * world-space `g` as the beam's far endpoint, which keeps the beam base
-     * locked to the current head pose between actual object hits.
-     *
-     * `now` is supplied by the caller so the grace-window evaluation uses the
-     * same clock reading as the throttle gate — this also keeps the function
-     * free of side effects against performance.now(), which keeps the test
-     * timestamp mock deterministic.
-     */
     private _computeFallbackGazePoint(camera: THREE.Camera, now: number): number[] {
         const withinHitGrace = this._hasLastHit
             && (now - this._lastHitTimestamp) <= C3DThreeAdapter.LAST_HIT_GRACE_MS;
@@ -628,13 +591,17 @@ class C3DThreeAdapter {
         const staticScene = scene.clone(true);
         const exportDirPromise = this._ensureExportDir();
 
+        const toRemove: THREE.Object3D[] = [];
         staticScene.traverse((obj) => {
             if (obj.userData && (obj.userData.c3dId || obj.userData.isDynamic)) {
-                if (obj.parent) {
-                    obj.parent.remove(obj);
-                }
+                toRemove.push(obj);
             }
         });
+        for (const obj of toRemove) {
+            if (obj.parent) {
+                obj.parent.remove(obj);
+            }
+        }
 
         const exportRoot = new THREE.Group();
         exportRoot.name = "CoordinateSystemFix";
@@ -722,8 +689,14 @@ class C3DThreeAdapter {
         }
 
         const exporter = new GLTFExporter();
-        
+
         const gltfClone = objectToExport.clone();
+
+        gltfClone.position.set(0, 0, 0);
+        gltfClone.quaternion.identity();
+        gltfClone.rotation.set(0, 0, 0);
+        gltfClone.updateMatrix();
+        gltfClone.updateMatrixWorld(true);
 
         console.log(`[Cognitive3D] Structure being exported for "${objectName}":`);
         this._logHierarchy(gltfClone);

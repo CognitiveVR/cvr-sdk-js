@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>C3D WebXR — New Features Demo</title>
+  <style>
+    :root { color-scheme: dark; }
+    body { margin: 0; min-height: 100%; background: #0b0f17; color: #e6edf3; font: 15px/1.6 system-ui, sans-serif; }
+    main { max-width: 620px; margin: 0 auto; padding: 32px 20px 60px; }
+    h1 { font-size: 20px; }
+    h2 { font-size: 15px; margin-top: 24px; color: #9fb0c3; text-transform: uppercase; letter-spacing: 0.04em; }
+    a.button { display: inline-block; background: #58a6ff; color: #0b0f17; text-decoration: none; font-weight: 600; padding: 10px 18px; border-radius: 8px; margin-top: 8px; }
+    code, pre { background: #161b22; border-radius: 6px; }
+    code { padding: 1px 5px; }
+    pre { padding: 12px 14px; overflow-x: auto; border: 1px solid #223; }
+    li { margin: 4px 0; }
+    .status { padding: 10px 12px; border-radius: 8px; border: 1px solid #223; margin: 12px 0; }
+    .ok { color: #7ee787; }
+    .warn { color: #f0b72f; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Cognitive3D WebXR — New Features Demo</h1>
+    <p>A small three.js + WebXR app that exercises three features added to the SDK:
+      <strong>object/plane detection</strong>, <strong>eye-tracking fixations</strong>, and
+      <strong>remote variables</strong>. It uses the real built SDK (<code>../../lib/c3d.umd.js</code>).</p>
+
+    <div class="status" id="support">Checking WebXR support…</div>
+
+    <a class="button" href="demo.html">Open the demo →</a>
+
+    <h2>1. Build the SDK</h2>
+    <pre>npm run build   # from the repo root — produces the gitignored lib/</pre>
+
+    <h2>2. Configure</h2>
+    <ol>
+      <li>Copy <code>config.example.js</code> to <code>config.js</code> in this folder.</li>
+      <li>Fill in a DATA-scoped Application API Key and your Scene (Name / ID / Version).</li>
+      <li><code>config.js</code> is gitignored — never commit real keys.</li>
+    </ol>
+
+    <h2>3. Serve over localhost (a secure context)</h2>
+    <pre>npx http-server . -p 8080
+# then open http://localhost:8080/examples/new-features-demo/</pre>
+    <p>On a Quest, plug in over USB and run <code>adb reverse tcp:8080 tcp:8080</code>, then open
+      <code>http://localhost:8080/examples/new-features-demo/</code> in Quest Browser.</p>
+
+    <h2>What to look for</h2>
+    <ul>
+      <li><strong>Object/plane detection</strong>: walk around your room; the "Planes/Meshes detected"
+        counters rise and "Room data sent" increments. Works in AR and (on Quest) VR.</li>
+      <li><strong>Fixations</strong>: look steadily at the blue cube; "Fixations sent" increments.
+        The "Gaze source" row reads <code>eye tracking</code> on headsets that expose an eye-gaze
+        input source through WebXR (Pico, Galaxy XR, Vive Pro Eye, Varjo, Quest Pro) and
+        <code>head direction</code> everywhere else. Quest 3 has no eye tracking hardware, so it
+        always uses head direction. Fixations are recorded either way.</li>
+      <li><strong>Remote variables</strong>: any variables defined for the participant on the dashboard
+        appear in the overlay, resolved by name.</li>
+      <li>Confirm the session (with planes, fixations, and the <code>c3d.remote_variable.*</code>
+        session properties) on the Cognitive3D dashboard.</li>
+    </ul>
+  </main>
+
+  <script>
+    (function () {
+      var box = document.getElementById('support');
+      if (!navigator.xr) {
+        box.className = 'status warn';
+        box.textContent = 'WebXR is not available in this browser. Open on a headset browser such as Quest Browser.';
+        return;
+      }
+      Promise.all([
+        navigator.xr.isSessionSupported('immersive-ar').catch(function () { return false; }),
+        navigator.xr.isSessionSupported('immersive-vr').catch(function () { return false; }),
+      ]).then(function (r) {
+        var ar = r[0], vr = r[1];
+        if (!ar && !vr) {
+          box.className = 'status warn';
+          box.textContent = 'No immersive XR mode is supported on this device.';
+        } else {
+          box.className = 'status ok';
+          box.textContent = 'Supported here: ' + [ar ? 'immersive-ar' : null, vr ? 'immersive-vr' : null].filter(Boolean).join(' / ') + '.';
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

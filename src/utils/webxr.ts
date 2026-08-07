@@ -1,14 +1,12 @@
 import Config from '../config';
 
-/**
- * For data that can only be retrieved from an active webxr session, 
- * such as gaze data, and vr device information 
- */
-
 // Define the structure for gaze hit result
 export interface GazeHitData {
     objectId: string;
     point: number[];
+    worldPoint?: number[];
+    objectPosition?: number[];
+    objectRotation?: number[];
 }
 
 type XRSessionModeValue = 'immersive-ar' | 'immersive-vr' | 'inline' | string;
@@ -20,6 +18,10 @@ interface GazeTracker {
 
 interface DynamicObject {
     // Define properties if needed, currently unused in logic
+}
+
+export interface RoomCaptureDriver {
+    processFrame: (_frame: XRFrame, _referenceSpace: XRReferenceSpace | null) => void;
 }
 
 export type GazeRaycaster = () => GazeHitData | null;
@@ -36,15 +38,15 @@ interface ReferenceSpaceResult {
     type: string | null;
 }
 
-
 export class XRSessionManager {
   private gazeTracker: GazeTracker;
   private xrSession: XRSession;
   private dynamicObject: DynamicObject | null;
   private gazeRaycaster: GazeRaycaster | null;
-  
-  public referenceSpace: XRReferenceSpace | null;  // For gaze tracking (local-floor)
-  public boundedReferenceSpace: XRReferenceSpace | null; // For boundary tracking (bounded-floor)
+  private roomCapture: RoomCaptureDriver | null;
+
+  public referenceSpace: XRReferenceSpace | null;
+  public boundedReferenceSpace: XRReferenceSpace | null;
   public referenceSpaceType: string | null;
   public sessionMode: XRSessionModeValue | null;
   
@@ -53,13 +55,14 @@ export class XRSessionManager {
   private lastUpdateTime: number;
   private interval: number;
 
-  constructor(gazeTracker: GazeTracker, xrSession: XRSession, dynamicObject: DynamicObject | null = null, gazeRaycaster: GazeRaycaster | null = null) {
-    this.gazeTracker = gazeTracker; 
-    this.xrSession = xrSession; 
+  constructor(gazeTracker: GazeTracker, xrSession: XRSession, dynamicObject: DynamicObject | null = null, gazeRaycaster: GazeRaycaster | null = null, roomCapture: RoomCaptureDriver | null = null) {
+    this.gazeTracker = gazeTracker;
+    this.xrSession = xrSession;
     this.dynamicObject = dynamicObject;
     this.gazeRaycaster = gazeRaycaster;
-    this.referenceSpace = null;  // For gaze tracking (local-floor)
-    this.boundedReferenceSpace = null; // For boundary tracking (bounded-floor)
+    this.roomCapture = roomCapture;
+    this.referenceSpace = null;
+    this.boundedReferenceSpace = null;
     this.referenceSpaceType = null;
     this.sessionMode = null;
     this.isTracking = false; 
@@ -116,9 +119,9 @@ export class XRSessionManager {
       console.log('Cog3D-XR-Session-Manager: Gaze tracking started.');
       
       return {
-          referenceSpace: this.referenceSpace,  // local-floor for gaze
+          referenceSpace: this.referenceSpace,
           referenceSpaceType: this.referenceSpaceType,
-          boundedReferenceSpace: this.boundedReferenceSpace,  // bounded-floor for boundaries
+          boundedReferenceSpace: this.boundedReferenceSpace,
           sessionMode: this.sessionMode
       };
   }
@@ -142,17 +145,18 @@ export class XRSessionManager {
       };
   }
   
-  onXRFrame(timestamp: number, frame: XRFrame): void { 
+  onXRFrame(timestamp: number, frame: XRFrame): void {
     if (!this.isTracking) return;
 
+    this.animationFrameHandle = this.xrSession.requestAnimationFrame(this.onXRFrame);
+
     // ONLY process hardware gaze if configured to use WebXR directly
-    if (Config.gazeTrackingSource === 'webxr') {
+    if (Config.gazeTrackingSource === 'webxr' && this.referenceSpace) {
         const configIntervalMs = Config.GazeInterval ? Config.GazeInterval * 1000 : this.interval;
         if (timestamp - this.lastUpdateTime >= configIntervalMs) {
             this.lastUpdateTime = timestamp;
-            if(!this.referenceSpace) return;
 
-            const viewerPose = frame.getViewerPose(this.referenceSpace); 
+            const viewerPose = frame.getViewerPose(this.referenceSpace);
 
             if (viewerPose) {
                 const { position, orientation } = viewerPose.transform;
@@ -173,8 +177,15 @@ export class XRSessionManager {
             }
         }
     }
-    
-    this.animationFrameHandle = this.xrSession.requestAnimationFrame(this.onXRFrame); 
+
+    if (this.roomCapture) {
+        try {
+            this.roomCapture.processFrame(frame, this.referenceSpace);
+        } catch (error) {
+            console.warn('Cog3D-XR-Session-Manager: room capture failed; disabling it for this session.', error);
+            this.roomCapture = null;
+        }
+    }
   }
   
   stop(): void { 
