@@ -315,6 +315,14 @@ class C3D {
       if (features.handTracking) {
           this.setSessionProperty("c3d.app.handtracking.enabled", true);
       }
+
+      const allowHeadFixations = this.core.config.allowFixationWithoutEyeTracking === true;
+      const fixationsEnabled = this.core.config.enableFixation !== false && (features.eyeTracking || allowHeadFixations);
+      this.gaze.setFixationSink(fixationsEnabled ? this.fixation : null);
+      this.setSessionProperty("c3d.app.fixation.enabled", fixationsEnabled);
+      if (!fixationsEnabled && this.core.config.enableFixation !== false) {
+          console.log("C3D: fixation recording disabled; the headset does not report eye-tracking support.");
+      }
     }
     else{
         console.warn("C3D: No XR session was provided. Gaze data will not be tracked.");

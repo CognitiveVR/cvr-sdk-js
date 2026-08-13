@@ -12,6 +12,9 @@ interface C3DInstance {
     };
     setSessionProperty: (_key: string, value: SessionPropertyValue) => void;
     xrSessionManager: XRSessionManager;
+    roomCapture: {
+        recordBoundary: (points: number[][], pose: { p: number[]; r: number[] }) => void;
+    };
 }
 
 class BoundaryTracker {
@@ -24,6 +27,7 @@ class BoundaryTracker {
     private previousRoomSize: { width: number; depth: number; area: number };
     private isHMDOutsideBoundary: boolean;
     private boundaryType: string;
+    private boundaryNeedsSend: boolean;
 
     constructor(c3dInstance: C3DInstance) {
         this.c3d = c3dInstance;
@@ -37,8 +41,9 @@ class BoundaryTracker {
         this.previousRoomSize = { width: 0, depth: 0, area: 0 };
         this.isHMDOutsideBoundary = false;
         this.boundaryType = "Unknown";
+        this.boundaryNeedsSend = false;
 
-        console.log("C3D-SDK: BoundaryTracker initialized."); 
+        console.log("C3D-SDK: BoundaryTracker initialized.");
     }
 
     start(xrSession: XRSession, referenceSpace: XRReferenceSpace): void {
@@ -64,6 +69,7 @@ class BoundaryTracker {
             const roomSizeString = `${newRoomSize.width.toFixed(2)} x ${newRoomSize.depth.toFixed(2)}`;
             this.c3d.setSessionProperty("c3d.roomsizeMeters", newRoomSize.area);
             this.c3d.setSessionProperty("c3d.roomsizeDescriptionMeters", roomSizeString);
+            this.boundaryNeedsSend = true;
 
             console.log(`C3D-SDK: BoundaryTracker boundary type '${this.boundaryType}', Room Size: ${roomSizeString} meters.`);
         } else {
@@ -113,6 +119,7 @@ class BoundaryTracker {
                 this.previousRoomSize = newRoomSize;
                 this.c3d.setSessionProperty("c3d.roomsizeMeters", newRoomSize.area);
                 this.c3d.setSessionProperty("c3d.roomsizeDescriptionMeters", `${newRoomSize.width.toFixed(2)} x ${newRoomSize.depth.toFixed(2)}`);
+                this.boundaryNeedsSend = true;
 
                 if (!isInitialCheck) {
                     this.c3d.customEvent.send('c3d.User changed boundary', [0, 0, 0], {
@@ -128,7 +135,12 @@ class BoundaryTracker {
             this.xrSession.requestAnimationFrame((time, frame) => {
                 // Ensure referenceSpace is still valid
                 if (!this.referenceSpace) return;
-                
+
+                if (this.boundaryNeedsSend) {
+                    this._sendBoundaryPolygon(frame);
+                    this.boundaryNeedsSend = false;
+                }
+
                 const viewerPose = frame.getViewerPose(this.referenceSpace);
                 if (viewerPose) {
                     const hmdPosition = viewerPose.transform.position;
@@ -147,6 +159,28 @@ class BoundaryTracker {
         }
     }
 
+    private _sendBoundaryPolygon(frame: XRFrame): void {
+        if (!this.referenceSpace || this.previousBoundaryPoints.length === 0) {
+            return;
+        }
+
+        const M_TO_CM = 100;
+        const points = this.previousBoundaryPoints.map(pt => [pt.x * M_TO_CM, 0, -pt.z * M_TO_CM]);
+
+        let pose = { p: [0, 0, 0], r: [0, 0, 0, 1] };
+        const primarySpace = this.c3d.xrSessionManager ? this.c3d.xrSessionManager.referenceSpace : null;
+        if (primarySpace) {
+            const boundedPose = frame.getPose(this.referenceSpace, primarySpace);
+            if (boundedPose) {
+                const p = boundedPose.transform.position;
+                const o = boundedPose.transform.orientation;
+                pose = { p: [p.x * M_TO_CM, p.y * M_TO_CM, -p.z * M_TO_CM], r: [o.x, o.y, -o.z, -o.w] };
+            }
+        }
+
+        this.c3d.roomCapture.recordBoundary(points, pose);
+    }
+
     public forceBoundaryUpdate(): void {
         if (!this.referenceSpace) {
             console.warn("C3D-SDK: BoundaryTracker.forceBoundaryUpdate failed - no reference space."); 
@@ -159,7 +193,8 @@ class BoundaryTracker {
             return; 
         }
 
-        console.log("C3D-SDK: BoundaryTracker: Forcing boundary update for new scene."); 
+        console.log("C3D-SDK: BoundaryTracker: Forcing boundary update for new scene.");
+        this.boundaryNeedsSend = true;
         const newRoomSize = this._getRoomSize(boundaryPoints);
         const newArea = newRoomSize.area;
 

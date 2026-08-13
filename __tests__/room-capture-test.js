@@ -265,6 +265,24 @@ test('mesh extents are not recomputed while lastChangedTime is unchanged', () =>
     expect(vertexReads).toBe(2);
 });
 
+test('recordBoundary sends the play-area polygon in shapes with a placing pose', async () => {
+    const c3d = makeActiveC3D();
+    const capture = captureNetwork(c3d);
+    const points = [[-1, 0, -1.5], [1, 0, -1.5], [1, 0, 1.5], [-1, 0, 1.5]];
+    const pose = { p: [0.5, 0, -0.5], r: [0, 0, 0, 1] };
+
+    c3d.roomCapture.recordBoundary(points, pose);
+
+    const p = capture.payload;
+    expect(capture.suburl).toBe('boundary');
+    expect(p.shapes.length).toBe(1);
+    expect(p.shapes[0].points).toEqual(points);
+    expect(typeof p.shapes[0].time).toBe('number');
+    expect(p.data.length).toBe(1);
+    expect(p.data[0].p).toEqual([0.5, 0, -0.5]);
+    expect(p.data[0].r).toEqual([0, 0, 0, 1]);
+});
+
 test('survives detectedPlanes/detectedMeshes accessors that throw, and latches', () => {
     const c3d = makeActiveC3D();
     let planeReads = 0;

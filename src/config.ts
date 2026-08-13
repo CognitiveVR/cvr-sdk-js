@@ -28,6 +28,7 @@ export interface Settings {
     enableRoomCapture?: boolean;
     roomDataLimit?: number;
     enableFixation?: boolean;
+    allowFixationWithoutEyeTracking?: boolean;
     fixationDataLimit?: number;
     fixationMinDurationMs?: number;
     fixationMaxAngle?: number;
@@ -60,6 +61,7 @@ class Config {
     public enableRoomCapture: boolean;
     public roomDataLimit: number;
     public enableFixation: boolean;
+    public allowFixationWithoutEyeTracking: boolean;
     public fixationDataLimit: number;
     public fixationMinDurationMs: number;
     public fixationMaxAngle: number;
@@ -91,6 +93,7 @@ class Config {
         this.enableRoomCapture = true;
         this.roomDataLimit = 64;
         this.enableFixation = true;
+        this.allowFixationWithoutEyeTracking = false;
         this.fixationDataLimit = 256;
         this.fixationMinDurationMs = 60;
         this.fixationMaxAngle = 1;
@@ -123,7 +126,7 @@ class Config {
             'gazeBatchSize', 'GazeInterval', 'HMDType', 'allSceneData', 'gazeTrackingSource',
             'fallbackController',
             'autoFetchRemoteVariables', 'enableRoomCapture', 'roomDataLimit',
-            'enableFixation', 'fixationDataLimit', 'fixationMinDurationMs',
+            'enableFixation', 'allowFixationWithoutEyeTracking', 'fixationDataLimit', 'fixationMinDurationMs',
             'fixationMaxAngle', 'fixationMaxBlinkMs', 'fixationSaccadeEndMs',
             'fixationMaxOffDynamicMs', 'fixationDynamicSizeMultiplier',
             'fixationFocusSizeMultiplier'

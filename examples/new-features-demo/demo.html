@@ -59,8 +59,13 @@
       headset detects planes/meshes. Plane/mesh detection works in AR and (on Quest) VR.
     </div>
   </div>
-  <script src="config.js"></script>
-  <script src="../../lib/c3d.umd.js"></script>
+  <script>
+    (function () {
+      var v = '?v=' + Date.now();
+      document.write('<scr' + 'ipt src="config.js' + v + '"><\/scr' + 'ipt>');
+      document.write('<scr' + 'ipt src="../../lib/c3d.umd.js' + v + '"><\/scr' + 'ipt>');
+    })();
+  </script>
   <script type="importmap">
   { "imports": {
       "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
@@ -543,7 +548,9 @@
       el('mMeshes').textContent = String(meshesCount);
       el('mGaze').textContent = c3d && c3d.gaze ? String(c3d.gaze.batchedGaze.length) : '0';
       el('mRoom').textContent = String(roomDataTotal);
-      el('mFix').textContent = String(fixationsTotal);
+      el('mFix').textContent = (live && !eyeTrackingGranted)
+        ? fixationsTotal + ' (disabled: no eye tracking)'
+        : String(fixationsTotal);
     }
 
     let adapterPromise = null;

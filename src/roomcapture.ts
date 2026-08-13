@@ -38,13 +38,24 @@ interface RoomManifestEntry {
     anchors: AnchorManifestEntry[];
 }
 
+interface BoundaryShape {
+    time: number;
+    points: number[][];
+}
+
+interface TrackingSnapshot {
+    time: number;
+    p: number[];
+    r: number[];
+}
+
 interface BoundaryPayload {
     userid: string;
     timestamp: number;
     sessionid: string;
     part: number;
-    data: unknown[];
-    shapes: unknown[];
+    data: TrackingSnapshot[];
+    shapes: BoundaryShape[];
     roomManifest: RoomManifestEntry[];
     roomData: RoomDataEntry[];
 }
@@ -95,6 +106,8 @@ class RoomCapture {
     private jsonPart: number;
     private anchorCounter: number;
     private geometryUnsupported: boolean;
+    private pendingShapes: BoundaryShape[];
+    private pendingTracking: TrackingSnapshot[];
 
     constructor(core: CognitiveVRAnalyticsCore) {
         this.core = core;
@@ -107,6 +120,18 @@ class RoomCapture {
         this.jsonPart = 1;
         this.anchorCounter = 0;
         this.geometryUnsupported = false;
+        this.pendingShapes = [];
+        this.pendingTracking = [];
+    }
+
+    recordBoundary(points: number[][], pose: { p: number[]; r: number[] }): void {
+        if (!points || points.length === 0) {
+            return;
+        }
+        const time = this.core.getTimestamp();
+        this.pendingShapes.push({ time, points });
+        this.pendingTracking.push({ time, p: pose.p, r: pose.r });
+        this.sendData().catch((err) => console.warn('C3D: RoomCapture boundary flush failed', err));
     }
 
     processFrame(frame: XRFrame, referenceSpace: XRReferenceSpace | null): void {
@@ -275,7 +300,8 @@ class RoomCapture {
                 resolve('RoomCapture.sendData: no session active');
                 return;
             }
-            if (this.roomData.length === 0 && this.pendingManifest.length === 0) {
+            if (this.roomData.length === 0 && this.pendingManifest.length === 0
+                && this.pendingShapes.length === 0 && this.pendingTracking.length === 0) {
                 resolve('RoomCapture.sendData: no room data');
                 return;
             }
@@ -293,8 +319,8 @@ class RoomCapture {
                 timestamp: Math.floor(this.core.getSessionTimestamp()),
                 sessionid: this.core.getSessionId(),
                 part: this.jsonPart,
-                data: [],
-                shapes: [],
+                data: this.pendingTracking.slice(),
+                shapes: this.pendingShapes.slice(),
                 roomManifest: manifest,
                 roomData: this.roomData.slice(),
             };
@@ -303,6 +329,8 @@ class RoomCapture {
             this.roomData = [];
             this.pendingManifest = [];
             this.pendingRoomDeclaration = false;
+            this.pendingShapes = [];
+            this.pendingTracking = [];
 
             this.network.networkCall('boundary', payload)
                 .then((res) => (res === 200 ? resolve(res) : reject(res)))
@@ -319,6 +347,8 @@ class RoomCapture {
         this.jsonPart = 1;
         this.anchorCounter = 0;
         this.geometryUnsupported = false;
+        this.pendingShapes = [];
+        this.pendingTracking = [];
     }
 }
 
