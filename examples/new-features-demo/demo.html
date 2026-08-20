@@ -55,8 +55,9 @@
     </div>
     <div id="exportStatus" class="hint"></div>
     <div class="hint">
-      Look steadily at the blue cube to generate fixations. Move around your room so the
-      headset detects planes/meshes. Plane/mesh detection works in AR and (on Quest) VR.
+      Look steadily at the blue cube to generate fixations. Plane/mesh detection needs
+      <strong>AR</strong> — on Quest it returns nothing in VR — and needs Space Setup done
+      on the headset.
     </div>
   </div>
   <script>
@@ -274,12 +275,39 @@
       return { point: [far.x, far.y, -far.z] };
     }
 
+    function reportBoundaryPost(payload, status, err) {
+      const rooms = payload.roomManifest || [];
+      const anchors = rooms.reduce((n, r) => n + ((r.anchors || []).length), 0);
+      const detail = {
+        http_status: (status === undefined || status === null) ? 'no-response' : String(status),
+        error: err ? String((err && err.message) || err) : 'none',
+        part: payload.part,
+        shapes: (payload.shapes || []).length,
+        tracking_poses: (payload.data || []).length,
+        manifest_rooms: rooms.length,
+        manifest_anchors: anchors,
+        room_data_entries: (payload.roomData || []).length,
+      };
+      console.log('[demo] boundary POST', detail);
+      emit('boundary_post', detail);
+    }
+
     function instrument(mod, onSend) {
       try {
         const net = mod && mod.network;
         if (net && typeof net.networkCall === 'function') {
           const orig = net.networkCall.bind(net);
-          net.networkCall = (url, payload) => { try { onSend(payload); } catch (e) {  } return orig(url, payload); };
+          net.networkCall = (url, payload) => {
+            try { onSend(payload); } catch (e) {  }
+            const result = orig(url, payload);
+            if (url === 'boundary') {
+              Promise.resolve(result).then(
+                (status) => reportBoundaryPost(payload, status, null),
+                (err) => reportBoundaryPost(payload, undefined, err),
+              );
+            }
+            return result;
+          };
         }
       } catch (e) {  }
     }
@@ -501,7 +529,7 @@
         const sessionInit = mode === 'immersive-ar'
           ? {
               optionalFeatures: ['plane-detection', 'mesh-detection', 'hit-test',
-                'local-floor', 'eye-tracking', 'dom-overlay'],
+                'local-floor', 'bounded-floor', 'eye-tracking', 'dom-overlay'],
               domOverlay: { root: overlay },
             }
           : {

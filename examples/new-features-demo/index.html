@@ -29,7 +29,7 @@
 
     <div class="status" id="support">Checking WebXR support…</div>
 
-    <a class="button" href="demo.html">Open the demo →</a>
+    <a class="button" id="openDemo" href="demo.html">Open the demo →</a>
 
     <h2>1. Build the SDK</h2>
     <pre>npm run build   # from the repo root — produces the gitignored lib/</pre>
@@ -42,15 +42,17 @@
     </ol>
 
     <h2>3. Serve over localhost (a secure context)</h2>
-    <pre>npx http-server . -p 8080
-# then open http://localhost:8080/examples/new-features-demo/</pre>
-    <p>On a Quest, plug in over USB and run <code>adb reverse tcp:8080 tcp:8080</code>, then open
-      <code>http://localhost:8080/examples/new-features-demo/</code> in Quest Browser.</p>
+    <pre>python3 examples/new-features-demo/serve.py 5173   # no-store, avoids stale cached pages
+# then open http://127.0.0.1:5173/examples/new-features-demo/demo.html</pre>
+    <p>On a Quest, plug in over USB and run <code>adb reverse tcp:5173 tcp:5173</code>, then open
+      <code>http://127.0.0.1:5173/examples/new-features-demo/demo.html</code> in Quest Browser.</p>
 
     <h2>What to look for</h2>
     <ul>
-      <li><strong>Object/plane detection</strong>: walk around your room; the "Planes/Meshes detected"
-        counters rise and "Room data sent" increments. Works in AR and (on Quest) VR.</li>
+      <li><strong>Object/plane detection</strong>: enter <strong>AR</strong> and walk around your
+        room; the "Planes/Meshes detected" counters rise and "Room data sent" increments.
+        Requires <code>immersive-ar</code> (on Quest, VR reports the feature as enabled but
+        <code>detectedPlanes</code> stays empty) and requires Space Setup on the headset.</li>
       <li><strong>Fixations</strong>: look steadily at the blue cube; "Fixations sent" increments.
         The "Gaze source" row reads <code>eye tracking</code> on headsets that expose an eye-gaze
         input source through WebXR (Pico, Galaxy XR, Vive Pro Eye, Varjo, Quest Pro) and
@@ -64,6 +66,10 @@
   </main>
 
   <script>
+    (function () {
+      var a = document.getElementById('openDemo');
+      if (a) { a.href = 'demo.html?v=' + Date.now(); }
+    })();
     (function () {
       var box = document.getElementById('support');
       if (!navigator.xr) {

@@ -39,22 +39,34 @@ WebXR requires a secure context (HTTPS or `localhost`). Serve from the **repo ro
 page uses the relative path `../../lib/c3d.umd.js`):
 
 ```sh
-npx http-server . -p 8080
-# or: python3 -m http.server 8080
+python3 examples/new-features-demo/serve.py 5173
 ```
 
-Open `http://localhost:8080/examples/new-features-demo/`.
+`serve.py` serves the repo root and sends `no-store` on every response. Headset browsers
+cache `demo.html` aggressively, and a cached page silently runs stale code that looks
+exactly like a broken feature, so prefer it over `npx http-server` / `python3 -m
+http.server` while iterating.
 
-- **Quest**: plug in over USB and run `adb reverse tcp:8080 tcp:8080`, then open
-  `http://localhost:8080/examples/new-features-demo/` in Quest Browser (localhost is a
-  secure context). Or serve over HTTPS / a tunnel.
+Open `http://127.0.0.1:5173/examples/new-features-demo/demo.html`.
+
+- **Quest**: plug in over USB and run `adb reverse tcp:5173 tcp:5173`, then open
+  `http://127.0.0.1:5173/examples/new-features-demo/demo.html` in Quest Browser (localhost
+  is a secure context). Or serve over HTTPS / a tunnel. To launch it straight from the
+  shell:
+
+  ```sh
+  adb shell am start -a android.intent.action.VIEW \
+    -d "http://127.0.0.1:5173/examples/new-features-demo/demo.html?v=$(date +%s)"
+  ```
 
 ## Which mode?
 
-Object/plane detection is about the real-world room. On a **Quest** it is available in
-**both** `immersive-ar` (passthrough) and `immersive-vr` — the room model from Space Setup
-is exposed to either, so the demo offers **Enter AR** and **Enter VR**. On **phones** it is
-AR-only. Fixations and remote variables behave the same in both modes.
+Object/plane detection is about the real-world room, and it requires **`immersive-ar`**.
+Verified on Quest: in `immersive-vr` the runtime accepts the `plane-detection` descriptor
+(it shows up in `session.enabledFeatures`) but `detectedPlanes` stays empty, so use
+**Enter AR** to test it. It also requires the participant to have run **Space Setup** on
+the headset; without an authored room there is nothing to detect. Fixations and remote
+variables behave the same in both modes.
 
 The `plane-detection` / `mesh-detection` features are requested as *optional* — where the
 runtime does not support them the SDK simply records no room data (no error).
